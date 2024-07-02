@@ -1,9 +1,4 @@
 #include "gtest/gtest.h"
-#include "SensorDataHandler.h"
-
-TEST(SensorDataHandler, test_check){
-    EXPECT_EQ(1, 1);
-}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
