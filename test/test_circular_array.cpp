@@ -135,3 +135,18 @@ TEST(CircularArrayTest, test_get_median_even) {
     EXPECT_EQ(circularArray->getMedian(), 8);
     delete circularArray;
 }
+
+// Test clear
+TEST(CircularArrayTest, test_clear) {
+    CircularArray<int> *circularArray = new CircularArray<int>(5);
+    circularArray->push(1);
+    circularArray->push(2);
+    circularArray->push(3);
+    circularArray->push(4);
+    circularArray->push(5);
+    EXPECT_TRUE(circularArray->isFull());
+    circularArray->clear();
+    EXPECT_FALSE(circularArray->isFull());
+    EXPECT_EQ(circularArray->getHead(), 0);
+    delete circularArray;
+}
