@@ -21,7 +21,7 @@ TEST(SensorDataHandler, test_data_point){
 
 TEST(SensorDataHandler, test_saving_data){
     DataSaverMock dsm;
-    SensorDataHandler sdh ("test", &dsm);
+    SensorDataHandler sdh (0, &dsm);
 
     EXPECT_CALL(dsm, saveDataPoint(_, _)).Times(1);
     DataPoint dp(100, 1.0);
