@@ -62,7 +62,11 @@
         "streambuf": "cpp",
         "thread": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "charconv": "cpp",
+        "format": "cpp",
+        "span": "cpp",
+        "cinttypes": "cpp"
     },
     "cSpell.words": [
         "DATAPOINT",
