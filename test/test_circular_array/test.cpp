@@ -2,7 +2,7 @@
 #include "test_dp_circular_array.h"
 
 void setUp(void) {
-    // Setup code, called before each test if necessary
+
 }
 
 void tearDown(void) {
