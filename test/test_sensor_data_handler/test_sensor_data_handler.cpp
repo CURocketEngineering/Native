@@ -6,6 +6,16 @@
 
 #include <vector>
 
+MockSerial Serial;
+
+void setUp(void) {
+    Serial.clear();
+}
+
+void tearDown(void) {
+    Serial.clear();
+}
+
 // ---------------------------------------------------------------------
 // Mock IDataSaver Implementation
 // ---------------------------------------------------------------------
