@@ -8,6 +8,14 @@
 // Use a mock Serial for debug prints in tests
 MockSerial Serial;
 
+void setUp(void) {
+    Serial.clear();
+}
+
+void tearDown(void) {
+    Serial.clear();
+}
+
 // Convenience: Retrieve window’s max size from the predictor’s circular array.
 static inline uint16_t getWindowMaxSize(LaunchPredictor &lp) {
     return lp.getWindowPtr()->getMaxSize();
