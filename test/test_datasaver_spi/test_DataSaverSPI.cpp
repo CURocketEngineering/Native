@@ -48,7 +48,7 @@ void test_flush_buffer(void) {
         dss->saveDataPoint(dp, 1);
         expectedBytesBuffer += 5;
         if (expectedBytesBuffer >= dss->BUFFER_SIZE) {
-            expectedBytesBuffer -= dss->BUFFER_SIZE;
+            expectedBytesBuffer = 5;
         }
         TEST_ASSERT_EQUAL(expectedBytesBuffer, dss->getBufferIndex());
     }
