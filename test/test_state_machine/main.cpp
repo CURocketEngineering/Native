@@ -48,8 +48,8 @@ void test_launch(){
         DataPoint aclX(sim.getCurrentTime(), 0);
         DataPoint aclY(sim.getCurrentTime(), 0);
 
-        // Subtracting 9.8 because the launchPredictor expects measured acceleration
-        // I.e. 0m/s^2 stationary on ground is measured as -9.8m/s^2 by the accelerometer
+        // Adding 9.8 because the launchPredictor expects measured acceleration
+        // I.e. 0m/s^2 stationary on ground is measured as 9.8m/s^2 by the accelerometer
         DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8);
         DataPoint alt(sim.getCurrentTime(), sim.getAltitude());
         // std::cout << aclZ.data << "  mag: " << lp.getMedianAccelerationSquared() << " Ts: " << aclZ.timestamp_ms << std::endl;

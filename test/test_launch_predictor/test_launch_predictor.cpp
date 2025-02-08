@@ -45,6 +45,8 @@ void fillWindowWithInterval(LaunchPredictor &lp, uint32_t initialTime, uint16_t 
         DataPoint dp_z(ts, z_val);
         // Note: During the filling phase, we expect LP_INITIAL_POPULATION
         int ret = lp.update(dp, dp_y, dp_z);
+
+        // std::cout << "ret: " << ret << std::endl;
         // If the predictor has not yet been fully populated, it should return LP_INITIAL_POPULATION.
         if (!lp.getWindowPtr()->isFull()) {
             TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, ret);
@@ -161,9 +163,8 @@ void test_update_too_fast(void) {
     fillWindow(lp, 1.0, 1.0, 1.0);
     // Get the current most-recent timestamp (head of the window)
     uint32_t headTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms;
-    // For windowInterval = 5, twenty percent is 1 (5*0.2).
-    // Data arriving with a difference less than 5 - 1 = 4 should trigger LP_DATA_TOO_FAST.
-    uint32_t tooFastTime = headTime + 3; // 3 < 4
+    // Data arriving too fast, should get rejected
+    uint32_t tooFastTime = headTime + lp.getAcceptableTimeDifference() - 1;  // -1 makes it too soon
     DataPoint dp(tooFastTime, 1.0);
     DataPoint dp_y(tooFastTime, 1.0);
     DataPoint dp_z(tooFastTime, 1.0);
@@ -181,9 +182,8 @@ void test_update_window_data_stale(void) {
     fillWindow(lp, 1.0, 1.0, 1.0);
     // Get current head timestamp.
     uint32_t headTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms;
-    // With windowInterval = 5 and twenty percent = 1,
-    // updates delayed by more than 5+1 = 6 ms are too late.
-    uint32_t staleTime = headTime + 7;  // 7 > 6, should be too late.
+
+    uint32_t staleTime = headTime + lp.getWindowInterval() + lp.getAcceptableTimeDifference() + 1;
     DataPoint dp(staleTime, 10.0);
     DataPoint dp_y(staleTime, 10.0);
     DataPoint dp_z(staleTime, 10.0);
@@ -210,27 +210,62 @@ void test_update_window_data_stale(void) {
  * For example: For windowSize_ms = 100, min_window_size_ms = 90.
  * If we use a delta of 4 ms, then total time range = 4*(maxSize-1).
  */
-void test_window_time_range_too_small(void) {
+void test_window_time_range_too_small_doesnt_happen(void) {
     LaunchPredictor lp(10.0, 100, 5);
     // Use a delta that is exactly at the lower bound allowed.
-    // For windowInterval 5, twenty percent is 1 => minimum allowed delta = 5 - 1 = 4.
-    // With maxSize = 100/5 = 20, time range = 4*(20-1) = 76 which is below 90.
     uint32_t start = 1000;
-    fillWindowWithInterval(lp, start, 4, 10.0, 10.0, 10.0);
+    // This the smallest delta that is still acceptable.
+    fillWindowWithInterval(lp, start, lp.getWindowInterval() - lp.getAcceptableTimeDifference(), 10.0, 10.0, 10.0);
     
-    // After the window is full, the update that pushed the last value should have
-    // returned LP_WINDOW_TIME_RANGE_TOO_SMALL.
-    // (Since our helper does not capture the return of the final call,
-    // we can do an extra update with an allowed delta and check the return.)
-    // Use a valid delta so that DATA_TOO_FAST is not triggered.
+    // Pushing a final point at this delta which should trigger a launch and not a time range error.
     uint32_t headTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms;
-    uint32_t validTime = headTime + 4;  // exactly at lower bound.
+    uint32_t validTime = headTime + lp.getWindowInterval() - lp.getAcceptableTimeDifference();
     DataPoint dp(validTime, 10.0);
     DataPoint dp_y(validTime, 10.0);
     DataPoint dp_z(validTime, 10.0);
     int ret = lp.update(dp, dp_y, dp_z);
-    TEST_ASSERT_EQUAL_INT(LP_WINDOW_TIME_RANGE_TOO_SMALL, ret);
+    TEST_ASSERT_EQUAL_INT(LP_LAUNCH_DETECTED, ret);
+    TEST_ASSERT_TRUE(lp.isLaunched());
+
+    lp.reset();
+
+    // std::cout << "Resetting" << std::endl;
+
+    // Start by filling the window with normal data to get past the initial population stage.
+    fillWindow(lp, 9.0, 0.0, 0.0);
+
+    // std::cout << "Filled window" << std::endl;
+
+    TEST_ASSERT_TRUE(lp.getWindowPtr()->isFull());
+
+    // std::cout << "Window is full" << std::endl;
+
+    // Now fill the window with even a smaller delta.
+    // because of the LP_DATA_TOO_FAST check, the window range still won't be too small
+    // because some updates will be rejected.
+    fillWindowWithInterval(lp, lp.getWindowPtr()->getFromHead(0).timestamp_ms, lp.getWindowInterval() - lp.getAcceptableTimeDifference() - 1, 9.0, 0.0, 0.0);
+
     TEST_ASSERT_FALSE(lp.isLaunched());
+
+    uint32_t tooFastTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + lp.getWindowInterval() - lp.getAcceptableTimeDifference() - 1;
+    DataPoint dp2(tooFastTime, 1.0);
+    ret = lp.update(dp2, dp2, dp2);
+    TEST_ASSERT_EQUAL_INT(LP_DATA_TOO_FAST, ret);
+
+    // Emulate getting a second point at the delay * 2
+    uint32_t nextTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + (lp.getWindowInterval() - lp.getAcceptableTimeDifference()) * 2;
+    DataPoint dp3(nextTime, 10.0);
+    ret = lp.update(dp3, dp3, dp3);
+    TEST_ASSERT_EQUAL_INT(LP_ACL_TOO_LOW, ret);
+
+    // Add a few more high acceleration updates to trigger launch.
+    for (int i = 0; i < lp.getWindowPtr()->getMaxSize(); i++) {
+        uint32_t newTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + lp.getWindowInterval();
+        DataPoint dp(newTime, 100.0);
+        int result = lp.update(dp, dp, dp);
+    }
+
+    TEST_ASSERT_TRUE(lp.isLaunched());
 }
 
 /**
@@ -324,7 +359,7 @@ int main(void) {
     RUN_TEST(test_update_with_early_timestamp);
     RUN_TEST(test_update_too_fast);
     RUN_TEST(test_update_window_data_stale);
-    RUN_TEST(test_window_time_range_too_small);
+    RUN_TEST(test_window_time_range_too_small_doesnt_happen);
     RUN_TEST(test_median_acceleration_below_threshold);
     RUN_TEST(test_median_acceleration_above_threshold);
     RUN_TEST(test_median_acceleration_edge_case);
