@@ -6,6 +6,9 @@
 #include "state_estimation/States.h"
 #include "ArduinoHAL.h"  // if required for your platform
 
+// Forward declaration of CSV test
+void test_state_machine_with_real_data(void);
+
 #include <fstream>
 #include <iostream>  // for error messages (if needed)
 #include <random>
@@ -143,6 +146,6 @@ int main(void) {
     RUN_TEST(test_init);
     RUN_TEST(test_launch);
     RUN_TEST(test_apogee_detection);
+    RUN_TEST(test_state_machine_with_real_data);
     return UNITY_END();
 }
-
