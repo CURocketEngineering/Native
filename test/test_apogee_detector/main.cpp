@@ -11,9 +11,9 @@
 #include <random>
 
 // Forward declaration of CSV test
-// void test_apogee_detector_with_real_data(void);
+void test_apogee_detector_with_real_data(void);
 // NOTE:
-// THIS IS COMMENTED OUT CAUSE IT NEEDS TO BE TESTED WITH A CSV FILE
+// THIS NEEDS TO BE TESTED WITH A CSV FILE
 // THAT STARTS AT LAUNCH, OTHERWISE IT JUST IMMEDIATELY DETECTS APOGEE
 // CAUSE ITS ON GROUND
 
@@ -373,6 +373,6 @@ int main(void) {
     RUN_TEST(test_get_estimated_values);
     RUN_TEST(test_update_with_old_timestamp);
     RUN_TEST(test_multiple_updates_after_apogee);
-    // RUN_TEST(test_apogee_detector_with_real_data);
+    RUN_TEST(test_apogee_detector_with_real_data);
     return UNITY_END();
 }

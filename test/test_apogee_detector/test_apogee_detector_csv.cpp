@@ -16,7 +16,7 @@
  */
 void test_apogee_detector_with_real_data(void) {
     // Create CSV provider to read test data with 25Hz sample rate (40ms interval)
-    CSVDataProvider provider("data/AA Data Launch Trimmed - Second Launch.csv", 25.0f);
+    CSVDataProvider provider("data/AA Data Collection - Second Launch Trimmed.csv", 25.0f);
     ApogeeDetector detector;
     
     // Create output CSV file for analysis

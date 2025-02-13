@@ -39,7 +39,7 @@ inline SensorData parseCSVRow(const std::vector<std::string>& row) {
         exit(EXIT_FAILURE);
     }
     SensorData data;
-    data.time    = stoll(row[0]) / 1000000; // Convert nanoseconds to milliseconds
+    data.time    = stoll(row[0]);
     data.accelx  = stof(row[1]);
     data.accely  = stof(row[2]);
     data.accelz  = stof(row[3]);
