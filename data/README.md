@@ -5,6 +5,9 @@ Place your CSV files here!
 Right now its expected the CSVs will have the following columns in this order:
 `time,accelx,accely,accelz,gyrox,gyroy,gyroz,magx,magy,magz,altitude,pressure,temp`
 
+### Flight Data CSV Locations on Teams
+[CURE/Engineering Divison/Flight Data](https://clemson.sharepoint.com/:f:/r/teams/ClemsonUniversityRocketEngineering/Shared%20Documents/CURE/Engineering%20Division/Flight%20Data?csf=1&web=1&e=TvkbCZ)
+
 ### Example CSV
 ```
 time,accelx,accely,accelz,gyrox,gyroy,gyroz,magx,magy,magz,altitude,pressure,temp
