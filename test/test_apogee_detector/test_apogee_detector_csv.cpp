@@ -15,8 +15,8 @@
  * and verifies apogee detection while outputting results to a CSV for analysis.
  */
 void test_apogee_detector_with_real_data(void) {
-    // Create CSV provider to read test data
-    CSVDataProvider provider("data/AA Data Collection - Second Launch.csv");
+    // Create CSV provider to read test data with 25Hz sample rate (40ms interval)
+    CSVDataProvider provider("data/AA Data Launch Trimmed - Second Launch.csv", 25.0f);
     ApogeeDetector detector;
     
     // Create output CSV file for analysis
@@ -34,11 +34,10 @@ void test_apogee_detector_with_real_data(void) {
     float maxAltitude = -1000.0f; // Initialize to a very low value
     uint32_t maxAltitudeTime = 0;
     
-    // Process each row of data
-    while (provider.hasNext()) {
+    // Process each data point at 25Hz
+    while (provider.hasNextDataPoint()) {
         hasData = true;
-        std::vector<std::string> row = provider.getRow();
-        SensorData data = SensorMockWrapper::parseRow(row);
+        SensorData data = provider.getNextDataPoint();
         
         // Create DataPoints for the detector
         DataPoint accelX(data.time, data.accelx);

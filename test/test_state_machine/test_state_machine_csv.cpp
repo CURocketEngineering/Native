@@ -18,8 +18,8 @@
  * and logs the results including launch and apogee predictions.
  */
 void test_state_machine_with_real_data(void) {
-    // Create CSV provider to read test data
-    CSVDataProvider provider("data/AA Data Collection - Second Launch.csv");
+    // Create CSV provider to read test data with 25Hz sample rate (40ms interval)
+    CSVDataProvider provider("data/AA Data Collection - Second Launch.csv", 25.0f);
     
     // Initialize components
     LaunchPredictor lp(30, 1000, 40);  // threshold, window, min samples
@@ -43,11 +43,10 @@ void test_state_machine_with_real_data(void) {
     uint32_t maxAltitudeTime = 0;
     uint32_t launchTime = 0;
     
-    // Process each row of data
-    while (provider.hasNext()) {
+    // Process each data point at 25Hz
+    while (provider.hasNextDataPoint()) {
         hasData = true;
-        std::vector<std::string> row = provider.getRow();
-        SensorData data = SensorMockWrapper::parseRow(row);
+        SensorData data = provider.getNextDataPoint();
         
         // Create DataPoints for the state machine
         DataPoint accelX(data.time, data.accelx);
