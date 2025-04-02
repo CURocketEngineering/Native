@@ -19,7 +19,7 @@
  */
 void test_state_machine_with_real_data(void) {
     // Create CSV provider to read test data with 25Hz sample rate (40ms interval)
-    CSVDataProvider provider("data/AA Data Collection - Second Launch.csv", 25.0f);
+    CSVDataProvider provider("data/MARTHA_3-8_1.3_B2_SingleID_transformed.csv", 25.0f);
     
     // Initialize components
     LaunchPredictor lp(30, 1000, 40);  // threshold, window, min samples
