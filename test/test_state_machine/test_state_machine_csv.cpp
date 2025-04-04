@@ -8,6 +8,7 @@
 #include "state_estimation/StateMachine.h"
 #include "state_estimation/LaunchPredictor.h"
 #include "state_estimation/ApogeeDetector.h"
+#include "state_estimation/VerticalVelocityEstimator.h"
 #include "data_handling/DataPoint.h"
 #include "DataSaver_mock.h"
 #include "../CSVMockData.h"
@@ -24,8 +25,9 @@ void test_state_machine_with_real_data(void) {
     // Initialize components
     LaunchPredictor lp(30, 1000, 40);  // threshold, window, min samples
     ApogeeDetector ad;
+    VerticalVelocityEstimator vve;
     DataSaverMock dataSaver;
-    StateMachine sm(&dataSaver, &lp, &ad);
+    StateMachine sm(&dataSaver, &lp, &ad, &vve);
     
     // Create output CSV file for analysis
     std::ofstream outputFile("state_machine_results.csv");
@@ -73,8 +75,8 @@ void test_state_machine_with_real_data(void) {
         float estAlt = 0.0f;
         float estVel = 0.0f;
         if (sm.getState() >= STATE_ASCENT) {
-            estAlt = ad.getEstimatedAltitude();
-            estVel = ad.getEstimatedVelocity();
+            estAlt = vve.getEstimatedAltitude();
+            estVel = vve.getEstimatedVelocity();
         }
         
         outputFile << data.time << ","

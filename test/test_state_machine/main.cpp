@@ -33,7 +33,8 @@ void tearDown(void) {
 void test_init(){
     LaunchPredictor lp(30, 1000, 40);
     ApogeeDetector ad;
-    StateMachine sm(dataSaverPtr, &lp, &ad);
+    VerticalVelocityEstimator vve;
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
 
     TEST_ASSERT_EQUAL(STATE_ARMED, sm.getState());
 }
@@ -41,7 +42,8 @@ void test_init(){
 void test_launch(){
     LaunchPredictor lp(30, 1000, 40);
     ApogeeDetector ad;
-    StateMachine sm(dataSaverPtr, &lp, &ad);
+    VerticalVelocityEstimator vve;
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
 
     // Start sim
     SimpleSimulator sim(10000, 70, 3000, 10);
@@ -72,7 +74,8 @@ void test_launch(){
 void test_apogee_detection(){
     LaunchPredictor lp(30, 1000, 40);
     ApogeeDetector ad;
-    StateMachine sm(dataSaverPtr, &lp, &ad);
+    VerticalVelocityEstimator vve;
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
 
     // Start sim
     SimpleSimulator sim(3000, 70, 2000, 5);
@@ -109,7 +112,8 @@ void test_apogee_detection(){
 void test_apogee_detection_noise(){
     LaunchPredictor lp(30, 1000, 40);
     ApogeeDetector ad;
-    StateMachine sm(dataSaverPtr, &lp, &ad);
+    VerticalVelocityEstimator vve;
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
 
     // Start sim
     SimpleSimulator sim(10000, 70, 3000, 10);

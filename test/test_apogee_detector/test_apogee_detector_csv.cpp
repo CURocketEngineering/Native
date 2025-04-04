@@ -6,6 +6,7 @@
 #include <cmath>
 #include "unity.h"
 #include "state_estimation/ApogeeDetector.h"
+#include "state_estimation/VerticalVelocityEstimator.h"
 #include "data_handling/DataPoint.h"
 #include "../CSVMockData.h"
 
@@ -18,6 +19,7 @@ void test_apogee_detector_with_real_data(void) {
     // Create CSV provider to read test data with 25Hz sample rate (40ms interval)
     CSVDataProvider provider("data/AA Data Collection - Second Launch Trimmed.csv", 25.0f);
     ApogeeDetector detector;
+    VerticalVelocityEstimator vve;
     
     // Create output CSV file for analysis
     std::ofstream outputFile("apogee_detector_results.csv");
@@ -46,7 +48,8 @@ void test_apogee_detector_with_real_data(void) {
         DataPoint alt(data.time, data.altitude);
         
         // Update detector with sensor data
-        detector.update(accelX, accelY, accelZ, alt);
+        vve.update(accelX, accelY, accelZ, alt);
+        detector.update(&vve);
         
         // Track maximum altitude for validation
         if (data.altitude > maxAltitude) {
@@ -57,9 +60,9 @@ void test_apogee_detector_with_real_data(void) {
         // Write results to CSV
         outputFile << data.time << ","
                   << data.altitude << ","
-                  << detector.getEstimatedAltitude() << ","
-                  << detector.getEstimatedVelocity() << ","
-                  << detector.getInertialVerticalAcceleration() << ","
+                  << vve.getEstimatedAltitude() << ","
+                  << vve.getEstimatedVelocity() << ","
+                  << vve.getInertialVerticalAcceleration() << ","
                   << (detector.isApogeeDetected() ? "1" : "0") << "\n";
     }
     
