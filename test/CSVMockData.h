@@ -196,7 +196,7 @@ public:
         // Debug output every 1000 samples
         static int sample_count = 0;
         if (++sample_count % 1000 == 0) {
-            std::cout << "Processing time: " << currentTime_ms << " ms\n";
+            // std::cout << "Processing time: " << currentTime_ms << " ms\n";
         }
         
         // Advance to next sample time
