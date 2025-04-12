@@ -22,7 +22,7 @@ void test_apogee_detector_with_real_data(void) {
     VerticalVelocityEstimator vve;
     
     // Create output CSV file for analysis
-    std::ofstream outputFile("apogee_detector_results.csv");
+    std::ofstream outputFile("apogee_detector_results_real.csv");
     if (!outputFile.is_open()) {
         std::cerr << "Failed to open output CSV file" << std::endl;
         TEST_FAIL();
