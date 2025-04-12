@@ -48,6 +48,7 @@ void test_burnout_state_machine_with_real_data(void)
     float    maxAltitude    = -1000.0f;
     uint32_t maxAltTime     = 0;
     uint32_t launchTime     = 0;
+    uint32_t coastTime = 0;
 
     // ── main playback loop ──────────────────────────────────────────────
     while (provider.hasNextDataPoint())
@@ -62,7 +63,11 @@ void test_burnout_state_machine_with_real_data(void)
 
         sm.update(ax, ay, az, alt);
 
-        apogeePredictor.update();
+
+      
+        if (sm.getState() == STATE_COAST_ASCENT){
+            apogeePredictor.update();      
+        }
 
         float predApogee       = apogeePredictor.getPredictedApogeeAltitude_m();
         float timeToApogee     = apogeePredictor.getTimeToApogee_s();
