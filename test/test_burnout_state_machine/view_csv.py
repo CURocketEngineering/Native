@@ -33,35 +33,36 @@ def main(csv_path: str) -> None:
     ax_alt.plot(t, df["alt_m"],            label="Altitude (baro)")
     ax_alt.plot(t, df["estAlt_m"],         label="Estimated Altitude (VVE)")
     ax_alt.plot(t, df["predApogee_m"],     label="Predicted Apogee")
+    ax_alt.plot(t, df['quadPredApogee_m'], label="Predicted Apogee (Quad)")
     ax_alt.set_xlabel("Time (s)")
     ax_alt.set_ylabel("Altitude / Prediction (m)")
 
     # ── acceleration trace (first right axis) ────────────────────────────
     ax_acc = ax_alt.twinx()
-    ax_acc.plot(t, df["az_g"], linestyle="--", label="Vertical Accel (g)")
-    ax_acc.set_ylabel("Acceleration (g)")
+    # ax_acc.plot(t, df["az_g"], linestyle="--", label="Vertical Accel (g)")
+    # ax_acc.set_ylabel("Acceleration (g)")
 
     # ── state trace (second right axis, slightly offset) ─────────────────
     ax_state = ax_alt.twinx()
-    ax_state.spines["right"].set_position(("axes", 1.15))
-    ax_state.plot(
-        t, df["state"],
-        drawstyle="steps-post",
-        alpha=0.4,
-        label="State (integer)",
-        color="red",
-    )
-    ax_state.set_ylabel("State")
+    # ax_state.spines["right"].set_position(("axes", 1.15))
+    # ax_state.plot(
+    #     t, df["state"],
+    #     drawstyle="steps-post",
+    #     alpha=0.4,
+    #     label="State (integer)",
+    #     color="red",
+    # )
+    # ax_state.set_ylabel("State")
 
     # Plot estVel_mps
     ax_est_vel = ax_alt.twinx()
-    ax_est_vel.spines["right"].set_position(("axes", 1.3))
-    ax_est_vel.plot(
-        t, df["estVel_mps"],
-        alpha=0.4,
-        label="Estimated Velocity (m/s)",
-        color="orange",
-    )
+    # ax_est_vel.spines["right"].set_position(("axes", 1.3))
+    # ax_est_vel.plot(
+    #     t, df["estVel_mps"],
+    #     alpha=0.4,
+    #     label="Estimated Velocity (m/s)",
+    #     color="orange",
+    # )
 
     # ── shared legend ────────────────────────────────────────────────────
     lines, labels = [], []

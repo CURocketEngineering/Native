@@ -31,7 +31,7 @@ void tearDown(void) {
 }
 
 void test_init(){
-    LaunchPredictor lp(30, 1000, 40);
+    LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
     StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
@@ -40,7 +40,7 @@ void test_init(){
 }
 
 void test_launch(){
-    LaunchPredictor lp(30, 1000, 40);
+    LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
     StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
@@ -53,7 +53,7 @@ void test_launch(){
         DataPoint aclX(sim.getCurrentTime(), 0);
         DataPoint aclY(sim.getCurrentTime(), 0);
 
-        // Adding 9.8 because the launchPredictor expects measured acceleration
+        // Adding 9.8 because the launchDetector expects measured acceleration
         // I.e. 0m/s^2 stationary on ground is measured as 9.8m/s^2 by the accelerometer
         DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8);
         DataPoint alt(sim.getCurrentTime(), sim.getAltitude());
@@ -61,7 +61,7 @@ void test_launch(){
         sm.update(aclX, aclY, aclZ, alt);
     }
 
-    // Check that the launchPredictor detected the launch
+    // Check that the launchDetector detected the launch
     TEST_ASSERT_TRUE(lp.isLaunched());
 
     // Check that the lp was within 1s of the actual launch time
@@ -72,7 +72,7 @@ void test_launch(){
 }
 
 void test_apogee_detection(){
-    LaunchPredictor lp(30, 1000, 40);
+    LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
     StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
@@ -91,7 +91,7 @@ void test_apogee_detection(){
         DataPoint aclX(sim.getCurrentTime(), 0);
         DataPoint aclY(sim.getCurrentTime(), 0);
 
-        // Subtracting 9.8 because the launchPredictor expects measured acceleration
+        // Subtracting 9.8 because the launchDetector expects measured acceleration
         // I.e. 0m/s^2 stationary on ground is measured as -9.8m/s^2 by the accelerometer
         DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8 + aclNoise(gen));
         DataPoint alt(sim.getCurrentTime(), sim.getAltitude() + altNoise(gen));
@@ -110,7 +110,7 @@ void test_apogee_detection(){
 }
 
 void test_apogee_detection_noise(){
-    LaunchPredictor lp(30, 1000, 40);
+    LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
     StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
@@ -123,7 +123,7 @@ void test_apogee_detection_noise(){
         DataPoint aclX(sim.getCurrentTime(), 0);
         DataPoint aclY(sim.getCurrentTime(), 0);
 
-        // Subtracting 9.8 because the launchPredictor expects measured acceleration
+        // Subtracting 9.8 because the launchDetector expects measured acceleration
         // I.e. 0m/s^2 stationary on ground is measured as -9.8m/s^2 by the accelerometer
         DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8);
         DataPoint alt(sim.getCurrentTime(), sim.getAltitude());

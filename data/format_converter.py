@@ -34,6 +34,12 @@ def get_first_matching_column(df, column_names):
     for column_name in column_names:
         if column_name in df.columns:
             return column_name
+        if column_name.upper() in df.columns:
+            return column_name.upper()
+        if column_name.lower() in df.columns:
+            return column_name.lower()
+        if column_name.capitalize() in df.columns:
+            return column_name.capitalize()
     return None
 
 # Get time 

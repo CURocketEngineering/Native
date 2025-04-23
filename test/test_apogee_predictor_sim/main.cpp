@@ -50,7 +50,7 @@ void test_apogee_predictor_generates_csv(void)
     bool check_apogee_prediction = false;
 
 
-    CircularArray<DataPoint> predicted_apogees(255);
+    CircularArray<DataPoint> predicted_apogees(10);
 
 
     uint32_t tick_count = 0;

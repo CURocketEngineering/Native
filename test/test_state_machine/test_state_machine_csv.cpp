@@ -6,7 +6,7 @@
 #include <cmath>
 #include "unity.h"
 #include "state_estimation/StateMachine.h"
-#include "state_estimation/LaunchPredictor.h"
+#include "state_estimation/LaunchDetector.h"
 #include "state_estimation/ApogeeDetector.h"
 #include "state_estimation/VerticalVelocityEstimator.h"
 #include "data_handling/DataPoint.h"
@@ -23,7 +23,7 @@ void test_state_machine_with_real_data(void) {
     CSVDataProvider provider("data/MARTHA_3-8_1.3_B2_SingleID_transformed.csv", 25.0f);
     
     // Initialize components
-    LaunchPredictor lp(30, 1000, 40);  // threshold, window, min samples
+    LaunchDetector lp(30, 1000, 40);  // threshold, window, min samples
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
     DataSaverMock dataSaver;

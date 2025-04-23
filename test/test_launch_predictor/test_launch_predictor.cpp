@@ -1,6 +1,6 @@
 #define DEBUG 
 #include "unity.h"
-#include "state_estimation/LaunchPredictor.h"
+#include "state_estimation/LaunchDetector.h"
 #include "data_handling/CircularArray.h"
 #include "data_handling/DataPoint.h"
 #include "ArduinoHAL.h" 
@@ -17,7 +17,7 @@ void tearDown(void) {
 }
 
 // Convenience: Retrieve window’s max size from the predictor’s circular array.
-static inline uint16_t getWindowMaxSize(LaunchPredictor &lp) {
+static inline uint16_t getWindowMaxSize(LaunchDetector &lp) {
     return lp.getWindowPtr()->getMaxSize();
 }
 
@@ -26,13 +26,13 @@ static inline uint16_t getWindowMaxSize(LaunchPredictor &lp) {
 // =============================================================================
 
 /**
- * Fills the LaunchPredictor window with updates having a constant 
+ * Fills the LaunchDetector window with updates having a constant 
  * time interval (`delta_t_ms`) between data points and constant acceleration
  * components. The timestamp of the first update is given by initialTime.
  *
  * Each update will be called in sequence.
  */
-void fillWindowWithInterval(LaunchPredictor &lp, uint32_t initialTime, uint16_t delta_t_ms,
+void fillWindowWithInterval(LaunchDetector &lp, uint32_t initialTime, uint16_t delta_t_ms,
                             float x_val, float y_val, float z_val)
 {
     uint16_t maxSize = getWindowMaxSize(lp);
@@ -58,7 +58,7 @@ void fillWindowWithInterval(LaunchPredictor &lp, uint32_t initialTime, uint16_t 
  * A helper which fills the window with valid updates at the default windowInterval.
  * Uses the default delta_t = windowInterval_ms.
  */
-void fillWindow(LaunchPredictor &lp, float x_val, float y_val, float z_val)
+void fillWindow(LaunchDetector &lp, float x_val, float y_val, float z_val)
 {
     uint16_t delta = lp.getWindowInterval();
     // Choose an arbitrary starting timestamp.
@@ -75,7 +75,7 @@ void fillWindow(LaunchPredictor &lp, float x_val, float y_val, float z_val)
  * and once the window is full it starts checking for launch condition.
  */
 void test_initial_population(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     uint16_t maxSize = getWindowMaxSize(lp);
     uint32_t start = 1000;
     for (uint16_t i = 0; i < maxSize; i++) {
@@ -105,7 +105,7 @@ void test_initial_population(void) {
  * Test that once a launch is detected the predictor ignores further updates.
  */
 void test_already_launched(void) {
-    LaunchPredictor lp(30.0, 100, 5);
+    LaunchDetector lp(30.0, 100, 5);
     TEST_ASSERT_FALSE(lp.isLaunched());
     
     // Fill the window to get past the initial population stage.
@@ -140,7 +140,7 @@ void test_already_launched(void) {
  * that is older than the head of the current window.
  */
 void test_update_with_early_timestamp(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // Do one update to populate at least one data point.
     DataPoint dp1(1000, 1.0);
     lp.update(dp1, dp1, dp1);
@@ -158,7 +158,7 @@ void test_update_with_early_timestamp(void) {
  * then supply a new update with a timestamp delta smaller than (windowInterval - 20%).
  */
 void test_update_too_fast(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // Fill the window with valid data at the nominal interval.
     fillWindow(lp, 1.0, 1.0, 1.0);
     // Get the current most-recent timestamp (head of the window)
@@ -177,7 +177,7 @@ void test_update_too_fast(void) {
  * causes the window to clear and returns LP_WINDOW_DATA_STALE.
  */
 void test_update_window_data_stale(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // Fill the window first.
     fillWindow(lp, 1.0, 1.0, 1.0);
     // Get current head timestamp.
@@ -210,8 +210,8 @@ void test_update_window_data_stale(void) {
  * For example: For windowSize_ms = 100, min_window_size_ms = 90.
  * If we use a delta of 4 ms, then total time range = 4*(maxSize-1).
  */
-void test_window_time_range_too_small_doesnt_happen(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+void test_window_time_range_too_small(void) {
+    LaunchDetector lp(10.0, 100, 5);
     // Use a delta that is exactly at the lower bound allowed.
     uint32_t start = 1000;
     // This the smallest delta that is still acceptable.
@@ -274,7 +274,7 @@ void test_window_time_range_too_small_doesnt_happen(void) {
  */
 void test_median_acceleration_below_threshold(void) {
     // Use a threshold of 10 m/s^2; squared threshold = 100.
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // Fill the window with low acceleration values.
     fillWindow(lp, 1.0, 1.0, 1.0);
     // The median of [1,1,1] per axis results in acceleration squared = 1^2+1^2+1^2 = 3
@@ -285,7 +285,7 @@ void test_median_acceleration_below_threshold(void) {
  * Test that when the median of the window is above the threshold the launch is detected.
  */
 void test_median_acceleration_above_threshold(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // Fill the window with high acceleration values.
     fillWindow(lp, 10.0, 10.0, 10.0);
 
@@ -305,7 +305,7 @@ void test_median_acceleration_above_threshold(void) {
  * leads to launch detection.
  */
 void test_median_acceleration_edge_case(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // First fill with values just below threshold.
     fillWindow(lp, 9.9, 0, 0); // Total MAG is only 9.9^2 = 98.01 which is less than 100
     TEST_ASSERT_FALSE(lp.isLaunched());
@@ -321,7 +321,7 @@ void test_median_acceleration_edge_case(void) {
  * does not trigger a launch.
  */
 void test_window_not_full(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // Do a single update.
     DataPoint dp(1000, 1.0);
     TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, lp.update(dp, dp, dp));
@@ -332,7 +332,7 @@ void test_window_not_full(void) {
  * Test that resetting the predictor clears the launch flag and the window.
  */
 void test_reset(void) {
-    LaunchPredictor lp(10.0, 100, 5);
+    LaunchDetector lp(10.0, 100, 5);
     // Fill the window to trigger launch.
     fillWindow(lp, 10.0, 0.0, 0.0);
     fillWindow(lp, 20.0, 0.0, 0.0);
@@ -359,7 +359,7 @@ int main(void) {
     RUN_TEST(test_update_with_early_timestamp);
     RUN_TEST(test_update_too_fast);
     RUN_TEST(test_update_window_data_stale);
-    RUN_TEST(test_window_time_range_too_small_doesnt_happen);
+    RUN_TEST(test_window_time_range_too_small);
     RUN_TEST(test_median_acceleration_below_threshold);
     RUN_TEST(test_median_acceleration_above_threshold);
     RUN_TEST(test_median_acceleration_edge_case);
