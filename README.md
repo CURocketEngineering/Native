@@ -94,7 +94,7 @@ With VS Code, you open a folder and work out of it...
 2. Under Native>Advanced click "Test" to run all the unit tests
 
 ### Running CSV Tests
-1. Naviage to the Flight Logs Folder in the Microsoft Teams Drive (CURE>Engineering Division>Software>Flight-Logs)
+1. Navigate to the Flight Logs Folder in the Microsoft Teams Drive
 2. Download the CSV files in the Active Aero Feb 18 - 2023 Launch Folder
 3. Place the CSV files in the Native/data folder (if one doesn't exist create it)
 4. Click the PIO icon
