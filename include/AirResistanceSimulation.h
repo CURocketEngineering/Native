@@ -1,8 +1,8 @@
-#ifndef AIR_RESISTANCE_SIMULATION_H
-#define AIR_RESISTANCE_SIMULATION_H
+#ifndef AIRRESISTANCESIMULATION_H
+#define AIRRESISTANCESIMULATION_H
 
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 
 /**
  * @brief 1‑D rocket simulator that adds a quadratic drag term.
@@ -64,4 +64,4 @@ private:
     uint32_t apogeeTime_ms_{0};
 };
 
-#endif  // AIR_RESISTANCE_SIMULATION_H
+#endif  // AIRRESISTANCESIMULATION_H

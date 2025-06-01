@@ -70,8 +70,20 @@ void test_launch_detected(void) {
     TEST_ASSERT_NOT_EQUAL(0, dss->getLaunchWriteAddress());
 }
 
+void test_record_size(void) {
+    Record_t record = {1, 2.0f};
+    TEST_ASSERT_EQUAL(5, sizeof(record)); // 1 byte for name, 4 bytes for data
+}
+
+void test_timestamp_record_size(void) {
+    TimestampRecord_t record = {1, 1000};
+    TEST_ASSERT_EQUAL(5, sizeof(record)); // 1 byte for name, 4 bytes for timestamp
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
+    RUN_TEST(test_record_size);
+    RUN_TEST(test_timestamp_record_size);
     RUN_TEST(test_save_data_point);
     RUN_TEST(test_flush_buffer);
     RUN_TEST(test_erase_all_data);

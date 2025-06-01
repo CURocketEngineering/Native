@@ -1,0 +1,2 @@
+Checks: '*, -llvm-header-guard, -cppcoreguidelines-avoid-non-const-global-variables, -llvmlibc-*'
+

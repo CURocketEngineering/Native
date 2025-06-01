@@ -1,5 +1,5 @@
-#ifndef SIMPLE_SIMULATION_H
-#define SIMPLE_SIMULATION_H
+#ifndef SIMPLESIMULATION_H
+#define SIMPLESIMULATION_H
 
 #include <cstdint>
 
@@ -98,4 +98,4 @@ private:
     uint32_t apogeeTimestamp_ms_; // Timestamp (ms) when apogee was recorded
 };
 
-#endif  // SIMPLE_SIMULATION_H
+#endif  // SIMPLESIMULATION_H
