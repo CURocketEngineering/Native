@@ -48,7 +48,12 @@ void test_apogee_detector_with_real_data(void) {
         DataPoint alt(data.time, data.altitude);
         
         // Update detector with sensor data
-        vve.update(accelX, accelY, accelZ, alt);
+        AccelerationTriplet accel {
+            accelX,  // X-axis acceleration
+            accelY,  // Y-axis acceleration
+            accelZ   // Z-axis acceleration (vertical)
+        };
+        vve.update(accel, alt);
         detector.update(&vve);
         
         // Track maximum altitude for validation

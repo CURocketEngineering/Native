@@ -1,394 +1,346 @@
 // test_ApogeeDetector.cpp
-
 #define DEBUG
 #include "unity.h"
 #include "state_estimation/ApogeeDetector.h"
+#include "state_estimation/StateEstimationTypes.h"   // << AccelerationTriplet
 #include "data_handling/DataPoint.h"
-#include "ArduinoHAL.h"  // if required for your platform
+#include "ArduinoHAL.h"                              // (mock Serial)
 
 #include <fstream>
-#include <iostream>  // for error messages (if needed)
+#include <iostream>
 #include <random>
 
-// Forward declaration of CSV test
+// Forward declaration of optional CSV test (if you keep it elsewhere)
 void test_apogee_detector_with_real_data(void);
-// NOTE:
-// THIS NEEDS TO BE TESTED WITH A CSV FILE
-// THAT STARTS AT LAUNCH, OTHERWISE IT JUST IMMEDIATELY DETECTS APOGEE
-// CAUSE ITS ON GROUND
 
-
-// Use a mock Serial for debug prints in tests (if your HAL uses it)
+// -----------------------------------------------------------------------------
+// Mock Serial helpers
+// -----------------------------------------------------------------------------
 MockSerial Serial;
 
-//
-// setUp() and tearDown()
-//
-void setUp(void) {
-    Serial.clear();
-}
+void setUp(void)   { Serial.clear(); }
+void tearDown(void){ Serial.clear(); }
 
-void tearDown(void) {
-    Serial.clear();
-}
-
-//
-// Test Cases
-//
-
-/**
- * Test that before any update the detector is not initialized and returns default values.
- * Then, after the very first update the filter initializes using the altimeter reading.
- */
-void test_initialization(void) {
-    ApogeeDetector detector;
+// -----------------------------------------------------------------------------
+// Test 1 – Initialisation
+// -----------------------------------------------------------------------------
+void test_initialization(void)
+{
+    ApogeeDetector            detector;
     VerticalVelocityEstimator vve;
-    
-    // Before any update, apogee should not be detected.
+
     TEST_ASSERT_FALSE(detector.isApogeeDetected());
-    DataPoint apogee = detector.getApogee();
-    TEST_ASSERT_EQUAL_UINT32(0, apogee.timestamp_ms);
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, apogee.data);
-    
-    // Provide the first update.
-    uint32_t ts = 1000;
-    DataPoint accelX(ts, 0.0f);
-    DataPoint accelY(ts, 0.0f);
-    // Simulate an accelerometer z reading of 19.81 m/s² (i.e. 9.81 + 10) and altimeter 0 m.
-    DataPoint accelZ(ts, 19.81f);
+    DataPoint apo = detector.getApogee();
+    TEST_ASSERT_EQUAL_UINT32(0,     apo.timestamp_ms);
+    TEST_ASSERT_EQUAL_FLOAT (0.0f,  apo.data);
+
+    const uint32_t ts = 1000;
+    // 0 m alt, free-fall accelerations in X/Y, +g+10 m/s² in Z
+    AccelerationTriplet accel{
+        DataPoint(ts, 0.0f),          // X
+        DataPoint(ts, 0.0f),          // Y
+        DataPoint(ts, 19.81f)         // Z
+    };
     DataPoint alt(ts, 0.0f);
-    
-    // Update the vertical velocity estimator with the first set of data.
-    vve.update(accelX, accelY, accelZ, alt);
+
+    vve.update(accel, alt);
     detector.update(&vve);
-    
-    // After the first update, the estimated altitude should match the altimeter measurement.
+
     TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, vve.getEstimatedAltitude());
-    // And no apogee should be detected yet.
     TEST_ASSERT_FALSE(detector.isApogeeDetected());
 }
 
-/**
- * Test that during a sustained ascent the detector does not trigger apogee detection.
- * We simulate several updates (with dt = 10 ms) where the altimeter value increases steadily.
- */
-void test_no_apogee_during_ascent(void) {
-    ApogeeDetector detector;
+// -----------------------------------------------------------------------------
+// Test 2 – No apogee while climbing
+// -----------------------------------------------------------------------------
+void test_no_apogee_during_ascent(void)
+{
+    ApogeeDetector            detector;
     VerticalVelocityEstimator vve;
-    uint32_t ts = 1000;
-    float altitude = 0.0f;
-    
-    // Simulate 50 updates during ascent.
-    for (int i = 0; i < 50; i++) {
-        ts += 10;              // 10 ms interval
-        altitude += 0.5f;      // altitude increases by 0.5 m each update
-        DataPoint accelX(ts, 0.0f);
-        DataPoint accelY(ts, 0.0f);
-        // Upward acceleration: sensor reads 19.81 m/s² (net +10 m/s²)
-        DataPoint accelZ(ts, 19.81f);
-        DataPoint alt(ts, altitude);
-        vve.update(accelX, accelY, accelZ, alt);
-        detector.update(&vve);
-        TEST_ASSERT_FALSE(detector.isApogeeDetected());
-    }
-}
 
-void test_apogee_detection(void) {
-    ApogeeDetector detector;
-    VerticalVelocityEstimator vve;
-    uint32_t ts = 1000;  // starting timestamp in ms
-    float altitude = 0.0f;
-    float trueVertVel = 0.0f;
-    const float dt = 0.01f;   // 10 ms time step (seconds)
-    const int dt_ms = 10;     // time step in ms
+    uint32_t ts       = 1000;
+    float     altitude = 0.0f;
 
-    // --- Simulation Parameters ---
-    // Phase 1: Powered ascent (burn)
-    // We simulate a 3-second powered flight (300 updates) with a net acceleration of 70 m/s^2
-    // At rest, the accelerometer reads 9.81 m/s² (gravity), so the net acceleration is 70 - 9.81 = 60.19 m/s²
-    const int powered_updates = 300;
-    const float powered_net_accel = 70.0f;  // m/s² net upward acceleration during burn
-    const float powered_aZ = powered_net_accel;
-
-    // Setup random noise generators:
-    std::default_random_engine rng(std::random_device{}());
-    std::normal_distribution<float> noiseAccel(0.0f, 0.05f);  // accelerometer noise (m/s²)
-    std::normal_distribution<float> noiseAlt(0.0f, 0.3f);       // altitude sensor noise (m)
-
-    // Open CSV file for writing.
-    std::ofstream csvFile("apogee_test_output.csv");
-    if (!csvFile.is_open()) {
-        std::cerr << "Error: Unable to open CSV file for writing." << std::endl;
-        return;
-    }
-    csvFile << "timestamp,true_altitude,predicted_altitude,predicted_velocity,apogee_flag\n";
-
-    // --- Phase 1: Powered Ascent ---
-    for (int i = 0; i < powered_updates; i++) {
-        ts += dt_ms;
-        trueVertVel += powered_net_accel * dt;
-        altitude += trueVertVel * dt;
-
-        // During powered flight, the accelerometer reading is (net accel + gravity)
-        float measured_aZ = powered_aZ + noiseAccel(rng);
-        DataPoint aX(ts, noiseAccel(rng));  // assume near zero in X (plus noise)
-        DataPoint aY(ts, noiseAccel(rng));  // assume near zero in Y (plus noise)
-        DataPoint aZ(ts, measured_aZ);
-
-        // Altimeter reading (with noise)
-        float measured_alt = altitude + noiseAlt(rng);
-        DataPoint alt(ts, measured_alt);
-        
-        vve.update(aX, aY, aZ, alt);
-        detector.update(&vve);
-
-        csvFile << ts << ","
-                << altitude << ","
-                << vve.getEstimatedAltitude() << ","
-                << vve.getEstimatedVelocity() << ","
-                << (detector.isApogeeDetected() ? 1 : 0) << "\n";
-    }
-
-    // --- Phase 2: Coast (Free-Fall Ascent) ---
-    // After engine cutoff, the rocket is in free-fall so that its proper acceleration is ~0.
-    // The velocity now decreases due to gravity (-9.81 m/s²) until it reaches 0 (apogee).
-    float maxAlt = altitude;  // record the maximum altitude reached so far
-    uint32_t trueApogeeTs = ts;
-
-    // Simulate until the upward velocity goes to 0.
-    while (trueVertVel > 0.0f) {
-        ts += dt_ms;
-        trueVertVel += -9.81f * dt;  // free-fall deceleration (gravity)
-        altitude += trueVertVel * dt;
-
-        // Keep track of the maximum altitude and its time.
-        if (altitude > maxAlt) {
-            maxAlt = altitude;
-            trueApogeeTs = ts;
-        }
-
-        // In free-fall, the accelerometer reads 0 (plus noise).
-        float measured_aZ = 0.0f + noiseAccel(rng);
-        DataPoint aX(ts, noiseAccel(rng));
-        DataPoint aY(ts, noiseAccel(rng));
-        DataPoint aZ(ts, measured_aZ);
-        float measured_alt = altitude + noiseAlt(rng);
-        DataPoint alt(ts, measured_alt);
-
-        // Update the vertical velocity estimator and the apogee detector.
-        vve.update(aX, aY, aZ, alt);
-        detector.update(&vve);
-
-        csvFile << ts << ","
-                << altitude << ","
-                << vve.getEstimatedAltitude() << ","
-                << vve.getEstimatedVelocity() << ","
-                << (detector.isApogeeDetected() ? 1 : 0) << "\n";
-
-        // Until the filter “latches” apogee, assert it is not flagged.
-        TEST_ASSERT_FALSE(detector.isApogeeDetected());
-    }
-
-    // One extra update to simulate the beginning of the descent.
-    ts += dt_ms;
-    trueVertVel += -9.81f * dt;
-    altitude += trueVertVel * dt;
+    for (int i = 0; i < 50; ++i)            // 50×10 ms steps
     {
-        float measured_aZ = 0.0f + noiseAccel(rng);
-        DataPoint aX(ts, noiseAccel(rng));
-        DataPoint aY(ts, noiseAccel(rng));
-        DataPoint aZ(ts, measured_aZ);
-        float measured_alt = altitude + noiseAlt(rng);
-        DataPoint alt(ts, measured_alt);
-        
-        // Update the vertical velocity estimator and the apogee detector.
-        vve.update(aX, aY, aZ, alt);
+        ts       += 10;
+        altitude += 0.5f;                   // +0.5 m per step
+
+        AccelerationTriplet accel{
+            DataPoint(ts, 0.0f),            // X
+            DataPoint(ts, 0.0f),            // Y
+            DataPoint(ts, 19.81f)           // Z (g + 10 m/s²)
+        };
+        DataPoint alt(ts, altitude);
+
+        vve.update(accel, alt);
+        detector.update(&vve);
+        TEST_ASSERT_FALSE(detector.isApogeeDetected());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 3 – Full-flight simulation (powered, coast, descent) + CSV log
+// -----------------------------------------------------------------------------
+void test_apogee_detection(void)
+{
+    ApogeeDetector            detector;
+    VerticalVelocityEstimator vve;
+
+    uint32_t ts = 1000;            // ms
+    float    trueAlt     = 0.0f;   // m
+    float    trueVel     = 0.0f;   // m/s
+    const float dt       = 0.01f;  // 10 ms
+    const int   dt_ms    = 10;
+
+    // ------------- powered ascent -------------
+    const int   burnSteps      = 300;       // 3 s
+    const float netAccel_mps2  = 70.0f;     // net upward accel (excluding -g)
+    std::default_random_engine             rng{std::random_device{}()};
+    std::normal_distribution<float> noiseA (0.0f, 0.05f);
+    std::normal_distribution<float> noiseH (0.0f, 0.3f);
+
+    std::ofstream csv("apogee_test_output.csv");
+    csv << "ts,trueAlt,estAlt,estVel,apogee\n";
+
+    for (int i = 0; i < burnSteps; ++i)
+    {
+        ts      += dt_ms;
+        trueVel += netAccel_mps2 * dt;
+        trueAlt += trueVel * dt;
+
+        AccelerationTriplet accel{
+            DataPoint(ts, noiseA(rng)),                     // X
+            DataPoint(ts, noiseA(rng)),                     // Y
+            DataPoint(ts, netAccel_mps2 + noiseA(rng))      // Z
+        };
+        DataPoint alt(ts, trueAlt + noiseH(rng));
+
+        vve.update(accel, alt);
         detector.update(&vve);
 
-        csvFile << ts << ","
-                << altitude << ","
-                << vve.getEstimatedAltitude() << ","
-                << vve.getEstimatedVelocity() << ","
-                << (detector.isApogeeDetected() ? 1 : 0) << "\n";
+        csv << ts << ',' << trueAlt << ','
+            << vve.getEstimatedAltitude() << ','
+            << vve.getEstimatedVelocity() << ','
+            << (detector.isApogeeDetected() ? 1 : 0) << '\n';
     }
 
-    // --- Phase 3: Free-Fall Descent ---
-    // Continue simulating descent for a fixed number of updates or until the detector flags apogee.
-    const int descent_updates = 200;
-    for (int i = 0; i < descent_updates; i++) {
-        ts += dt_ms;
-        trueVertVel += -9.81f * dt;
-        altitude += trueVertVel * dt;
+    // ------------- coast (free-fall ascent) -------------
+    float maxAlt       = trueAlt;
+    uint32_t trueApoTs = ts;
 
-        float measured_aZ = 0.0f + noiseAccel(rng);
-        DataPoint dX(ts, noiseAccel(rng));
-        DataPoint dY(ts, noiseAccel(rng));
-        DataPoint dZ(ts, measured_aZ);
-        float measured_alt = altitude + noiseAlt(rng);
-        DataPoint dAlt(ts, measured_alt);
+    while (trueVel > 0.0f)
+    {
+        ts      += dt_ms;
+        trueVel += -9.81f * dt;
+        trueAlt += trueVel * dt;
 
-        // Update the vertical velocity estimator and the apogee detector.
-        vve.update(dX, dY, dZ, dAlt);
+        if (trueAlt > maxAlt) { maxAlt = trueAlt; trueApoTs = ts; }
+
+        AccelerationTriplet accel{
+            DataPoint(ts, noiseA(rng)),
+            DataPoint(ts, noiseA(rng)),
+            DataPoint(ts, 0.0f + noiseA(rng))
+        };
+        DataPoint alt(ts, trueAlt + noiseH(rng));
+
+        vve.update(accel, alt);
         detector.update(&vve);
 
-        csvFile << ts << ","
-                << altitude << ","
-                << vve.getEstimatedAltitude() << ","
-                << vve.getEstimatedVelocity() << ","
-                << (detector.isApogeeDetected() ? 1 : 0) << "\n";
+        csv << ts << ',' << trueAlt << ','
+            << vve.getEstimatedAltitude() << ','
+            << vve.getEstimatedVelocity() << ','
+            << (detector.isApogeeDetected() ? 1 : 0) << '\n';
 
-        if (detector.isApogeeDetected()) {
-            break;
-        }
+        TEST_ASSERT_FALSE(detector.isApogeeDetected());
     }
 
-    csvFile.close();
+    // trigger a first descent step
+    ts      += dt_ms;
+    trueVel += -9.81f * dt;
+    trueAlt += trueVel * dt;
+    {
+        AccelerationTriplet accel{
+            DataPoint(ts, noiseA(rng)),
+            DataPoint(ts, noiseA(rng)),
+            DataPoint(ts, 0.0f + noiseA(rng))
+        };
+        DataPoint alt(ts, trueAlt + noiseH(rng));
+        vve.update(accel, alt);
+        detector.update(&vve);
+    }
 
-    // --- Final Assertions ---
+    // ------------- descent loop -------------
+    for (int i = 0; i < 200 && !detector.isApogeeDetected(); ++i)
+    {
+        ts      += dt_ms;
+        trueVel += -9.81f * dt;
+        trueAlt += trueVel * dt;
+
+        AccelerationTriplet accel{
+            DataPoint(ts, noiseA(rng)),
+            DataPoint(ts, noiseA(rng)),
+            DataPoint(ts, 0.0f + noiseA(rng))
+        };
+        DataPoint alt(ts, trueAlt + noiseH(rng));
+
+        vve.update(accel, alt);
+        detector.update(&vve);
+    }
+    csv.close();
+
     TEST_ASSERT_TRUE(detector.isApogeeDetected());
-    DataPoint apogee = detector.getApogee();
-    // The detected apogee altitude should be within ~20 m of our simulated max altitude.
-    TEST_ASSERT_FLOAT_WITHIN(20.0f, maxAlt, apogee.data);
-    // The timestamp of the detected apogee should be within 10 ms of the simulated true apogee time.
-    TEST_ASSERT_UINT32_WITHIN(100, trueApogeeTs, apogee.timestamp_ms);
+    DataPoint apo = detector.getApogee();
+    TEST_ASSERT_FLOAT_WITHIN(20.0f, maxAlt, apo.data);
+    TEST_ASSERT_UINT32_WITHIN(100, trueApoTs, apo.timestamp_ms);
 }
 
-
-/**
- * Test that after a couple of updates the estimated altitude and vertical velocity
- * can be retrieved and are reasonable. During ascent the velocity should be positive.
- */
-void test_get_estimated_values(void) {
-    ApogeeDetector detector;
+// -----------------------------------------------------------------------------
+// Test 4 – getEstimated* helpers
+// -----------------------------------------------------------------------------
+void test_get_estimated_values(void)
+{
+    ApogeeDetector            detector;
     VerticalVelocityEstimator vve;
+
     uint32_t ts = 1000;
-    float altitude = 0.0f;
-    
-    // First update to initialize.
-    DataPoint accelX(ts, 0.0f);
-    DataPoint accelY(ts, 0.0f);
-    DataPoint accelZ(ts, 19.81f);
-    DataPoint alt(ts, altitude);
-    vve.update(accelX, accelY, accelZ, alt);
-    detector.update(&vve);
-    
-    // Give a bunch of updates at 10 meters of altitude
-    for (int i = 0; i < 1000; i++){
-        ts += 10;
-        altitude = 10.0f;
-        DataPoint aX(ts, 0.0f);
-        DataPoint aY(ts, 0.0f);
-        DataPoint aZ(ts, 9.8f);  // Like hanging from a parachute
-        DataPoint aAlt(ts, altitude);
-        vve.update(aX, aY, aZ, aAlt);
+    float    alt = 0.0f;
+
+    // first update
+    {
+        AccelerationTriplet accel{
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 19.81f)
+        };
+        DataPoint dpAlt(ts, alt);
+        vve.update(accel, dpAlt);
         detector.update(&vve);
     }
-    
-    float estAlt = vve.getEstimatedAltitude();
-    float estVel = vve.getEstimatedVelocity();
-    
-    // The estimated altitude should be very near the provided altimeter reading.
-    TEST_ASSERT_FLOAT_WITHIN(0.5f, altitude, estAlt);
-    
-    // Since the rocket is sitting at 10 meters, the estimated velocity should be near 0.
-    TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, estVel);
+
+    // steady - hover @10 m, accel ≈ g
+    for (int i = 0; i < 1000; ++i)
+    {
+        ts += 10;
+        alt = 10.0f;
+
+        AccelerationTriplet accel{
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 9.8f)
+        };
+        DataPoint dpAlt(ts, alt);
+
+        vve.update(accel, dpAlt);
+        detector.update(&vve);
+    }
+
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, alt, vve.getEstimatedAltitude());
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, vve.getEstimatedVelocity());
 }
 
-/**
- * Test that if an update is provided with a timestamp earlier than the last update,
- * the detector still updates the state (using a default small dt) and does not crash.
- */
-void test_update_with_old_timestamp(void) {
-    ApogeeDetector detector;
+// -----------------------------------------------------------------------------
+// Test 5 – handle an old timestamp gracefully
+// -----------------------------------------------------------------------------
+void test_update_with_old_timestamp(void)
+{
+    ApogeeDetector            detector;
     VerticalVelocityEstimator vve;
+
     uint32_t ts = 1000;
-    float altitude = 0.0f;
-    
-    // First update.
-    DataPoint accelX(ts, 0.0f);
-    DataPoint accelY(ts, 0.0f);
-    DataPoint accelZ(ts, 19.81f);
-    DataPoint alt(ts, altitude);
-    vve.update(accelX, accelY, accelZ, alt);
+    float    alt = 0.0f;
+
+    // first update
+    {
+        AccelerationTriplet accel{
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 19.81f)
+        };
+        vve.update(accel, DataPoint(ts, alt));
+        detector.update(&vve);
+    }
+
+    // older timestamp
+    uint32_t oldTs = 900;
+    AccelerationTriplet accelOld{
+        DataPoint(oldTs, 0.0f),
+        DataPoint(oldTs, 0.0f),
+        DataPoint(oldTs, 19.81f)
+    };
+    vve.update(accelOld, DataPoint(oldTs, alt));
     detector.update(&vve);
-    
-    // Provide a second update with an older timestamp.
-    uint32_t old_ts = 900;  // earlier than 1000 ms
-    DataPoint oldAccelX(old_ts, 0.0f);
-    DataPoint oldAccelY(old_ts, 0.0f);
-    DataPoint oldAccelZ(old_ts, 19.81f);
-    DataPoint oldAlt(old_ts, altitude);
-    // Update the vertical velocity estimator with the old timestamp.
-    vve.update(oldAccelX, oldAccelY, oldAccelZ, oldAlt);
-    detector.update(&vve);
-    
-    // Since the update() method uses a default dt (0.01 sec) if the timestamp is not later,
-    // the estimated altitude should remain near the measurement.
-    float estAlt = vve.getEstimatedAltitude();
-    TEST_ASSERT_TRUE(estAlt >= altitude);
+
+    TEST_ASSERT_TRUE(vve.getEstimatedAltitude() >= alt);
 }
 
-/**
- * Test that once apogee has been detected, further updates do not change the recorded apogee.
- */
-void test_multiple_updates_after_apogee(void) {
-    ApogeeDetector detector;
+// -----------------------------------------------------------------------------
+// Test 6 – apogee remains fixed after detection
+// -----------------------------------------------------------------------------
+void test_multiple_updates_after_apogee(void)
+{
+    ApogeeDetector            detector;
     VerticalVelocityEstimator vve;
-    uint32_t ts = 1000;
-    float altitude = 0.0f;
-    
-    // Simulate ascent for 200 updates.
-    for (int i = 0; i < 200; i++) {
-        ts += 10;
-        altitude += 0.5f;
-        DataPoint aX(ts, 0.0f);
-        DataPoint aY(ts, 0.0f);
-        DataPoint aZ(ts, 19.81f);
-        DataPoint alt(ts, altitude);
-        vve.update(aX, aY, aZ, alt);
+
+    uint32_t ts  = 1000;
+    float    alt = 0.0f;
+
+    // ascent
+    for (int i = 0; i < 200; ++i)
+    {
+        ts  += 10;
+        alt += 0.5f;
+        AccelerationTriplet accel{
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 19.81f)
+        };
+        vve.update(accel, DataPoint(ts, alt));
         detector.update(&vve);
     }
-    
-    // Now simulate descent to trigger apogee detection.
-    for (int i = 0; i < 200; i++) {
-        ts += 10;
-        altitude -= 0.5f;
-        DataPoint aX(ts, 0.0f);
-        DataPoint aY(ts, 0.0f);
-        DataPoint aZ(ts, 0.0f);
-        DataPoint alt(ts, altitude);
-        vve.update(aX, aY, aZ, alt);
+
+    // descent to trigger apogee
+    for (int i = 0; i < 200; ++i)
+    {
+        ts  += 10;
+        alt -= 0.5f;
+        AccelerationTriplet accel{
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f)
+        };
+        vve.update(accel, DataPoint(ts, alt));
         detector.update(&vve);
-        if (detector.isApogeeDetected()) {
-            break;
-        }
+        if (detector.isApogeeDetected()) break;
     }
-    
+
     TEST_ASSERT_TRUE(detector.isApogeeDetected());
-    DataPoint apogee1 = detector.getApogee();
-    
-    // Continue with more descent updates.
-    for (int i = 0; i < 10; i++) {
-        ts += 10;
-        altitude -= 0.5f;
-        DataPoint aX(ts, 0.0f);
-        DataPoint aY(ts, 0.0f);
-        DataPoint aZ(ts, 0.0f);
-        DataPoint alt(ts, altitude);
-        vve.update(aX, aY, aZ, alt);
+    DataPoint apo1 = detector.getApogee();
+
+    // further descent updates should not move the apogee point
+    for (int i = 0; i < 10; ++i)
+    {
+        ts  += 10;
+        alt -= 0.5f;
+        AccelerationTriplet accel{
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f),
+            DataPoint(ts, 0.0f)
+        };
+        vve.update(accel, DataPoint(ts, alt));
         detector.update(&vve);
     }
-    
-    DataPoint apogee2 = detector.getApogee();
-    // The apogee DataPoint should remain the same after it has been locked in.
-    TEST_ASSERT_EQUAL_UINT32(apogee1.timestamp_ms, apogee2.timestamp_ms);
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, apogee1.data, apogee2.data);
+
+    DataPoint apo2 = detector.getApogee();
+    TEST_ASSERT_EQUAL_UINT32(apo1.timestamp_ms, apo2.timestamp_ms);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, apo1.data, apo2.data);
 }
 
-//
-// Main: Run all tests
-//
-int main(void) {
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
+int main(void)
+{
     UNITY_BEGIN();
     RUN_TEST(test_initialization);
     RUN_TEST(test_no_apogee_during_ascent);
@@ -396,6 +348,6 @@ int main(void) {
     RUN_TEST(test_get_estimated_values);
     RUN_TEST(test_update_with_old_timestamp);
     RUN_TEST(test_multiple_updates_after_apogee);
-    RUN_TEST(test_apogee_detector_with_real_data);
+    RUN_TEST(test_apogee_detector_with_real_data);   // external CSV-driven test
     return UNITY_END();
 }

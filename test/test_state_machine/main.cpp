@@ -58,7 +58,8 @@ void test_launch(){
         DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8);
         DataPoint alt(sim.getCurrentTime(), sim.getAltitude());
         // std::cout << aclZ.data << "  mag: " << lp.getMedianAccelerationSquared() << " Ts: " << aclZ.timestamp_ms << std::endl;
-        sm.update(aclX, aclY, aclZ, alt);
+        AccelerationTriplet accel = {aclX, aclY, aclZ};
+        sm.update(accel, alt);
     }
 
     // Check that the launchDetector detected the launch
@@ -95,7 +96,8 @@ void test_apogee_detection(){
         // I.e. 0m/s^2 stationary on ground is measured as -9.8m/s^2 by the accelerometer
         DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8 + aclNoise(gen));
         DataPoint alt(sim.getCurrentTime(), sim.getAltitude() + altNoise(gen));
-        sm.update(aclX, aclY, aclZ, alt);
+        AccelerationTriplet accel = {aclX, aclY, aclZ};
+        sm.update(accel, alt);
     }
 
     // Check that the apogeeDetector detected the apogee
@@ -128,7 +130,8 @@ void test_apogee_detection_noise(){
         DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8);
         DataPoint alt(sim.getCurrentTime(), sim.getAltitude());
         // std::cout << aclZ.data << "  mag: " << lp.getMedianAccelerationSquared() << " Ts: " << aclZ.timestamp_ms << std::endl;
-        sm.update(aclX, aclY, aclZ, alt);
+        AccelerationTriplet accel = {aclX, aclY, aclZ};
+        sm.update(accel, alt);
     }
 
     // Check that the apogeeDetector detected the apogee

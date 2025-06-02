@@ -55,9 +55,11 @@ void test_state_machine_with_real_data(void) {
         DataPoint accelY(data.time, data.accely);
         DataPoint accelZ(data.time, data.accelz);
         DataPoint alt(data.time, data.altitude);
+
+        AccelerationTriplet accel = {accelX, accelY, accelZ};
         
         // Update state machine with sensor data
-        sm.update(accelX, accelY, accelZ, alt);
+        sm.update(accel, alt);
         
         // Track maximum altitude for validation
         if (data.altitude > maxAltitude) {

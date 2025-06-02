@@ -69,7 +69,9 @@ void test_burnout_state_machine_with_real_data(void)
         DataPoint az(noise_time, d.accelz);
         DataPoint alt(noise_time, d.altitude);
 
-        sm.update(ax, ay, az, alt);
+        AccelerationTriplet accel = {ax, ay, az};
+
+        sm.update(accel, alt);
 
 
       

@@ -4,6 +4,7 @@
 #include "data_handling/CircularArray.h"
 #include "data_handling/DataPoint.h"
 #include "ArduinoHAL.h" 
+#include "state_estimation/StateEstimationTypes.h"
 
 // Use a mock Serial for debug prints in tests
 MockSerial Serial;
@@ -40,13 +41,12 @@ void fillWindowWithInterval(LaunchDetector &lp, uint32_t initialTime, uint16_t d
     // We perform maxSize updates to fill the window.
     for (uint16_t i = 0; i < maxSize; i++) {
         uint32_t ts = initialTime + i * delta_t_ms;
-        DataPoint dp(ts, x_val);
+        DataPoint dp_x(ts, x_val);
         DataPoint dp_y(ts, y_val);
         DataPoint dp_z(ts, z_val);
-        // Note: During the filling phase, we expect LP_INITIAL_POPULATION
-        int ret = lp.update(dp, dp_y, dp_z);
+        AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+        int ret = lp.update(accel);
 
-        // std::cout << "ret: " << ret << std::endl;
         // If the predictor has not yet been fully populated, it should return LP_INITIAL_POPULATION.
         if (!lp.getWindowPtr()->isFull()) {
             TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, ret);
@@ -61,7 +61,7 @@ void fillWindowWithInterval(LaunchDetector &lp, uint32_t initialTime, uint16_t d
 void fillWindow(LaunchDetector &lp, float x_val, float y_val, float z_val)
 {
     uint16_t delta = lp.getWindowInterval();
-    // Choose an arbitrary starting timestamp.
+    // Choose an arbitrary starting timestamp based on the head element.
     uint32_t start = lp.getWindowPtr()->getFromHead(0).timestamp_ms + delta;
     fillWindowWithInterval(lp, start, delta, x_val, y_val, z_val);
 }
@@ -80,10 +80,11 @@ void test_initial_population(void) {
     uint32_t start = 1000;
     for (uint16_t i = 0; i < maxSize; i++) {
         uint32_t ts = start + i * lp.getWindowInterval();
-        DataPoint dp(ts, 1.0);
+        DataPoint dp_x(ts, 1.0);
         DataPoint dp_y(ts, 1.0);
         DataPoint dp_z(ts, 1.0);
-        int ret = lp.update(dp, dp_y, dp_z);
+        AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+        int ret = lp.update(accel);
         if (i < maxSize - 1) {
             TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, ret);
             TEST_ASSERT_FALSE(lp.isLaunched());
@@ -91,10 +92,11 @@ void test_initial_population(void) {
     }
     // One more update once window is full will get past the population stage.
     uint32_t ts = start + maxSize * lp.getWindowInterval();
-    DataPoint dp(ts, 1.0);
+    DataPoint dp_x(ts, 1.0);
     DataPoint dp_y(ts, 1.0);
     DataPoint dp_z(ts, 1.0);
-    int ret = lp.update(dp, dp_y, dp_z);
+    AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+    int ret = lp.update(accel);
     // Since the median value (acc^2 = 3) is likely below the threshold (10^2 = 100),
     // expect LP_ACL_TOO_LOW.
     TEST_ASSERT_EQUAL_INT(LP_ACL_TOO_LOW, ret);
@@ -109,16 +111,18 @@ void test_already_launched(void) {
     TEST_ASSERT_FALSE(lp.isLaunched());
     
     // Fill the window to get past the initial population stage.
-    fillWindow(lp, 10.0, 0, 0);
+    fillWindow(lp, 10.0, 0.0, 0.0);
 
     uint32_t newestTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + lp.getWindowInterval();
 
-    // fill half the window with values above the threshold
+    // Fill half the window with values above the threshold
     for (uint16_t i = 0; i < getWindowMaxSize(lp) / 2; i++) {
         uint32_t ts = newestTime + i * lp.getWindowInterval();
-        DataPoint dp(ts, 100.0);
-
-        int ret = lp.update(dp, dp, dp);
+        DataPoint dp_x(ts, 100.0);
+        DataPoint dp_y(ts, 100.0);
+        DataPoint dp_z(ts, 100.0);
+        AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+        int ret = lp.update(accel);
         // Expect LP_ACL_TOO_LOW until the median value is above the threshold.
         if (i < getWindowMaxSize(lp) / 2 - 1) {
             TEST_ASSERT_EQUAL_INT(LP_ACL_TOO_LOW, ret);
@@ -128,10 +132,11 @@ void test_already_launched(void) {
 
     TEST_ASSERT_TRUE(lp.isLaunched());
     uint32_t newTime = 10000;
-    DataPoint dp(newTime, 20.0);
+    DataPoint dp_x(newTime, 20.0);
     DataPoint dp_y(newTime, 20.0);
     DataPoint dp_z(newTime, 20.0);
-    int ret = lp.update(dp, dp_y, dp_z);
+    AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+    int ret = lp.update(accel);
     TEST_ASSERT_EQUAL_INT(LP_ALREADY_LAUNCHED, ret);
 }
 
@@ -143,10 +148,12 @@ void test_update_with_early_timestamp(void) {
     LaunchDetector lp(10.0, 100, 5);
     // Do one update to populate at least one data point.
     DataPoint dp1(1000, 1.0);
-    lp.update(dp1, dp1, dp1);
+    AccelerationTriplet accel1 = { dp1, dp1, dp1 };
+    lp.update(accel1);
     // Provide an update with an earlier timestamp.
     DataPoint dp2(900, 1.0);
-    int ret = lp.update(dp2, dp2, dp2);
+    AccelerationTriplet accel2 = { dp2, dp2, dp2 };
+    int ret = lp.update(accel2);
     TEST_ASSERT_EQUAL_INT(LP_YOUNGER_TIMESTAMP, ret);
 }
 
@@ -165,10 +172,11 @@ void test_update_too_fast(void) {
     uint32_t headTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms;
     // Data arriving too fast, should get rejected
     uint32_t tooFastTime = headTime + lp.getAcceptableTimeDifference() - 1;  // -1 makes it too soon
-    DataPoint dp(tooFastTime, 1.0);
+    DataPoint dp_x(tooFastTime, 1.0);
     DataPoint dp_y(tooFastTime, 1.0);
     DataPoint dp_z(tooFastTime, 1.0);
-    int ret = lp.update(dp, dp_y, dp_z);
+    AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+    int ret = lp.update(accel);
     TEST_ASSERT_EQUAL_INT(LP_DATA_TOO_FAST, ret);
 }
 
@@ -184,18 +192,20 @@ void test_update_window_data_stale(void) {
     uint32_t headTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms;
 
     uint32_t staleTime = headTime + lp.getWindowInterval() + lp.getAcceptableTimeDifference() + 1;
-    DataPoint dp(staleTime, 10.0);
+    DataPoint dp_x(staleTime, 10.0);
     DataPoint dp_y(staleTime, 10.0);
     DataPoint dp_z(staleTime, 10.0);
-    int ret = lp.update(dp, dp_y, dp_z);
+    AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+    int ret = lp.update(accel);
     TEST_ASSERT_EQUAL_INT(LP_WINDOW_DATA_STALE, ret);
     
     // After a stale update the window should have been cleared.
     // A subsequent update will be treated as initial population.
-    DataPoint dp2(staleTime + 5, 10.0);
+    DataPoint dp2_x(staleTime + 5, 10.0);
     DataPoint dp2_y(staleTime + 5, 10.0);
     DataPoint dp2_z(staleTime + 5, 10.0);
-    int ret2 = lp.update(dp2, dp2_y, dp2_z);
+    AccelerationTriplet accel2 = { dp2_x, dp2_y, dp2_z };
+    int ret2 = lp.update(accel2);
     TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, ret2);
 }
 
@@ -214,55 +224,64 @@ void test_window_time_range_too_small(void) {
     LaunchDetector lp(10.0, 100, 5);
     // Use a delta that is exactly at the lower bound allowed.
     uint32_t start = 1000;
-    // This the smallest delta that is still acceptable.
+    // This is the smallest delta that is still acceptable.
     fillWindowWithInterval(lp, start, lp.getWindowInterval() - lp.getAcceptableTimeDifference(), 10.0, 10.0, 10.0);
     
     // Pushing a final point at this delta which should trigger a launch and not a time range error.
     uint32_t headTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms;
     uint32_t validTime = headTime + lp.getWindowInterval() - lp.getAcceptableTimeDifference();
-    DataPoint dp(validTime, 10.0);
+    DataPoint dp_x(validTime, 10.0);
     DataPoint dp_y(validTime, 10.0);
     DataPoint dp_z(validTime, 10.0);
-    int ret = lp.update(dp, dp_y, dp_z);
+    AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+    int ret = lp.update(accel);
     TEST_ASSERT_EQUAL_INT(LP_LAUNCH_DETECTED, ret);
     TEST_ASSERT_TRUE(lp.isLaunched());
 
     lp.reset();
 
-    // std::cout << "Resetting" << std::endl;
-
     // Start by filling the window with normal data to get past the initial population stage.
     fillWindow(lp, 9.0, 0.0, 0.0);
 
-    // std::cout << "Filled window" << std::endl;
-
     TEST_ASSERT_TRUE(lp.getWindowPtr()->isFull());
 
-    // std::cout << "Window is full" << std::endl;
-
     // Now fill the window with even a smaller delta.
-    // because of the LP_DATA_TOO_FAST check, the window range still won't be too small
+    // Because of the LP_DATA_TOO_FAST check, the window range still won't be too small
     // because some updates will be rejected.
-    fillWindowWithInterval(lp, lp.getWindowPtr()->getFromHead(0).timestamp_ms, lp.getWindowInterval() - lp.getAcceptableTimeDifference() - 1, 9.0, 0.0, 0.0);
+    fillWindowWithInterval(lp, lp.getWindowPtr()->getFromHead(0).timestamp_ms, 
+                           lp.getWindowInterval() - lp.getAcceptableTimeDifference() - 1,
+                           9.0, 0.0, 0.0);
 
     TEST_ASSERT_FALSE(lp.isLaunched());
 
-    uint32_t tooFastTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + lp.getWindowInterval() - lp.getAcceptableTimeDifference() - 1;
-    DataPoint dp2(tooFastTime, 1.0);
-    ret = lp.update(dp2, dp2, dp2);
+    uint32_t tooFastTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + 
+                           lp.getWindowInterval() - lp.getAcceptableTimeDifference() - 1;
+    DataPoint dp2_x(tooFastTime, 1.0);
+    DataPoint dp2_y(tooFastTime, 1.0);
+    DataPoint dp2_z(tooFastTime, 1.0);
+    AccelerationTriplet accel2 = { dp2_x, dp2_y, dp2_z };
+    ret = lp.update(accel2);
     TEST_ASSERT_EQUAL_INT(LP_DATA_TOO_FAST, ret);
 
     // Emulate getting a second point at the delay * 2
-    uint32_t nextTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + (lp.getWindowInterval() - lp.getAcceptableTimeDifference()) * 2;
-    DataPoint dp3(nextTime, 10.0);
-    ret = lp.update(dp3, dp3, dp3);
+    uint32_t nextTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + 
+                        (lp.getWindowInterval() - lp.getAcceptableTimeDifference()) * 2;
+    DataPoint dp3_x(nextTime, 10.0);
+    DataPoint dp3_y(nextTime, 10.0);
+    DataPoint dp3_z(nextTime, 10.0);
+    AccelerationTriplet accel3 = { dp3_x, dp3_y, dp3_z };
+    ret = lp.update(accel3);
     TEST_ASSERT_EQUAL_INT(LP_ACL_TOO_LOW, ret);
 
     // Add a few more high acceleration updates to trigger launch.
     for (int i = 0; i < lp.getWindowPtr()->getMaxSize(); i++) {
         uint32_t newTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + lp.getWindowInterval();
-        DataPoint dp(newTime, 100.0);
-        int result = lp.update(dp, dp, dp);
+        DataPoint dp_x(newTime, 100.0);
+        DataPoint dp_y(newTime, 100.0);
+        DataPoint dp_z(newTime, 100.0);
+        AccelerationTriplet accelN = { dp_x, dp_y, dp_z };
+        int result = lp.update(accelN);
+        (void)result; // ignore intermediate result
     }
 
     TEST_ASSERT_TRUE(lp.isLaunched());
@@ -291,8 +310,11 @@ void test_median_acceleration_above_threshold(void) {
 
     // Add one more update with high acceleration.
     uint32_t newTime = lp.getWindowPtr()->getFromHead(0).timestamp_ms + lp.getWindowInterval();
-    DataPoint dp(newTime, 100.0);
-    int result = lp.update(dp, dp, dp);
+    DataPoint dp_x(newTime, 100.0);
+    DataPoint dp_y(newTime, 100.0);
+    DataPoint dp_z(newTime, 100.0);
+    AccelerationTriplet accel = { dp_x, dp_y, dp_z };
+    int result = lp.update(accel);
     TEST_ASSERT_EQUAL_INT(LP_LAUNCH_DETECTED, result);
 
     // The median acceleration squared is much higher than 10^2.
@@ -307,12 +329,12 @@ void test_median_acceleration_above_threshold(void) {
 void test_median_acceleration_edge_case(void) {
     LaunchDetector lp(10.0, 100, 5);
     // First fill with values just below threshold.
-    fillWindow(lp, 9.9, 0, 0); // Total MAG is only 9.9^2 = 98.01 which is less than 100
+    fillWindow(lp, 9.9, 0.0, 0.0); // Total MAG is only 9.9^2 = 98.01 which is less than 100
     TEST_ASSERT_FALSE(lp.isLaunched());
     
     // Then fill with values just above threshold.
     // Note: This may require more than one update because the window median takes time to shift.
-    fillWindow(lp, 10.1, 0, 0); // Total MAG is 10.1^2 = 102.01 which is more than 100
+    fillWindow(lp, 10.1, 0.0, 0.0); // Total MAG is 10.1^2 = 102.01 which is more than 100
     TEST_ASSERT_TRUE(lp.isLaunched());
 }
 
@@ -324,7 +346,8 @@ void test_window_not_full(void) {
     LaunchDetector lp(10.0, 100, 5);
     // Do a single update.
     DataPoint dp(1000, 1.0);
-    TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, lp.update(dp, dp, dp));
+    AccelerationTriplet accel = { dp, dp, dp };
+    TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, lp.update(accel));
     TEST_ASSERT_FALSE(lp.isLaunched());
 }
 
@@ -345,7 +368,8 @@ void test_reset(void) {
     
     // After reset, a new update should be treated as initial population.
     DataPoint dp(5000, 10.0);
-    TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, lp.update(dp, dp, dp));
+    AccelerationTriplet accel = { dp, dp, dp };
+    TEST_ASSERT_EQUAL_INT(LP_INITIAL_POPULATION, lp.update(accel));
 }
 
 // =============================================================================

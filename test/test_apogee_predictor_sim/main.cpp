@@ -70,9 +70,10 @@ void test_apogee_predictor_generates_csv(void)
         DataPoint aclY(ts, 0.0f);
         DataPoint aclZdp(ts, aclZ);
         DataPoint altDp(ts,  alt);
+        AccelerationTriplet accel = {aclX, aclY, aclZdp};
 
         /* --- update estimator / predictor --- */
-        vve.update(aclX, aclY, aclZdp, altDp);
+        vve.update(accel, altDp);
 
         if (!is_post_burnout && sim.getLaunchTimestamp() > 0 && sim.getLaunchTimestamp() + 1500 < ts)
         {
