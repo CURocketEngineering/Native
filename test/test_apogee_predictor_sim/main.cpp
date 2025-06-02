@@ -32,7 +32,8 @@ void test_apogee_predictor_generates_csv(void)
                                /*drag k*/       0.0008f);
 
     /* --------------- estimation chain --------------- */
-    VerticalVelocityEstimator vve(/*acc σ²*/1.05f, /*alt σ²*/10.0f);
+    NoiseVariances noise = {1.05F, 10.0F};
+    VerticalVelocityEstimator vve(noise);
     ApogeePredictor apo(vve, /*alpha*/0.2f, /*min climb vel*/1.0f);
 
     /* --------------- CSV setup ---------------------- */

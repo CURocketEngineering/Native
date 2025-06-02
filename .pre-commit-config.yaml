@@ -8,7 +8,9 @@ repos:
           - -c
           - pio check --fail-on-defect=low --fail-on-defect=medium --fail-on-defect=high
         language: system
-        types: [c, c++]
+        pass_filenames: false
+        always_run: true
+
       - id: pio-test
         name: PlatformIO Test
         entry: bash
@@ -16,4 +18,5 @@ repos:
           - -c
           - pio test
         language: system
-        types: [c, c++]
+        pass_filenames: false
+        always_run: true
