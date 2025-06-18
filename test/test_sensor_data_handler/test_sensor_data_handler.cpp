@@ -29,7 +29,7 @@ public:
     std::vector<SavedRecord> savedRecords;
 
     // This method will be called by SensorDataHandler.
-    virtual int saveDataPoint(DataPoint data, uint8_t sensorName) override {
+    virtual int saveDataPoint(const DataPoint& data, uint8_t sensorName) override {
         SavedRecord record = { data, sensorName };
         savedRecords.push_back(record);
         return 0;
