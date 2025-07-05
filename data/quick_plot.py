@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Load CSV data
-df = pd.read_csv("data/AA Data Collection - Second Launch Trimmed.csv")  # replace with actual path
+df = pd.read_csv("data/MARTHA_IREC_2025_B2_transformed.csv")  # replace with actual path
 
 # Plot accelx and altitude vs time
 plt.figure(figsize=(10, 5))

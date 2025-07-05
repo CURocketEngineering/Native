@@ -10,14 +10,37 @@
 #include "data_handling/DataPoint.h"
 #include "../CSVMockData.h"
 
+// Data sources to use
+// data/MARTHA_IREC_2025_B2_transformed.csv
+// data/AA Data Collection - Second Launch Trimmed.csv
+
+// Function prototypes
+void test_apogee_detector_with_real_data(void);
+void test_apogee_detector_with_file(const std::string& file);
+
 /**
  * Test the ApogeeDetector using real flight data from CSV.
  * This test reads sensor data from a CSV file, feeds it into the detector,
  * and verifies apogee detection while outputting results to a CSV for analysis.
  */
 void test_apogee_detector_with_real_data(void) {
+    // Vector of sim files
+    std::vector<std::string> simFiles = {
+        "data/MARTHA_IREC_2025_B2_transformed.csv",
+        "data/AA Data Collection - Second Launch Trimmed.csv"
+    };
+
+    for (const auto& file : simFiles) {
+        std::cout << "Testing with file: " << file << std::endl;
+        // Run the test for each file
+        test_apogee_detector_with_file(file);
+    }
+}
+
+
+void test_apogee_detector_with_file(const std::string& file) {
     // Create CSV provider to read test data with 25Hz sample rate (40ms interval)
-    CSVDataProvider provider("data/AA Data Collection - Second Launch Trimmed.csv", 25.0f);
+    CSVDataProvider provider(file, 25.0f);
     ApogeeDetector detector;
     VerticalVelocityEstimator vve;
     

@@ -99,18 +99,27 @@ for column_name, new_column_name in column_mapping.items():
 # Interpolate data to fill in missing values
 output_data = output_data.interpolate(method='linear', limit_direction='both')
 
-# Remove first 10 seconds of data
-output_data = output_data[output_data['time'] > 10000]
+# Sort the data my timestamp
+output_data = output_data.sort_values(by='time').reset_index(drop=True)
+
+
+# Find where peak altitude is an only keep the 30 seconds before and after
+peak_altitude_index = output_data['altitude'].idxmax()
+peak_altitude_time = output_data['time'][peak_altitude_index]
+# Filter the data to only keep the 30 seconds before and after the peak altitude
+start_time = peak_altitude_time - 30000  # 30 seconds before
+end_time = peak_altitude_time + 30000    # 30 seconds after
+output_data = output_data[(output_data['time'] >= start_time) & (output_data['time'] <= end_time)].reset_index(drop=True)
 
 # Plot alt and aclz on the same plot to make sure it all looks good
-# import matplotlib.pyplot as plt
-# plt.plot(output_data['time'], output_data['altitude'], label='altitude')
-# plt.plot(output_data['time'], output_data['accelz'], label='accelz')
-# plt.xlabel('time (ms)')
-# plt.ylabel('altitude (m) / accelz (m/s^2)')
-# plt.title('altitude and accelz')
-# plt.legend()
-# plt.show()
+import matplotlib.pyplot as plt
+plt.plot(output_data['time'], output_data['altitude'], label='altitude')
+plt.plot(output_data['time'], output_data['accelz'], label='accelz')
+plt.xlabel('time (ms)')
+plt.ylabel('altitude (m) / accelz (m/s^2)')
+plt.title('altitude and accelz')
+plt.legend()
+plt.show()
 
 # Save the new dataframe to a csv file
 output_file = os.path.splitext(input_file)[0] + '_transformed.csv'
