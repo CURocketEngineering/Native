@@ -28,14 +28,16 @@ static std::normal_distribution<float> timeNoise(0.0f, 0.0f); // ms
 void test_burnout_state_machine_with_real_data(void)
 {
     CSVDataProvider provider(
-        "data/MARTHA_4-13_1.3_B1_transformed.csv",
-        100.0f);                                  // 25 Hz sample‑rate data → 40 ms Δt
+        // "data/MARTHA_4-13_1.3_B1_transformed.csv",
+        "data/MARTHA_3-8_1.3_B2_SingleID_transformed.csv",
+        25.0f);                               
 
     LaunchDetector          lp(30, 1000, 40);
     ApogeeDetector           ad;
     VerticalVelocityEstimator vve;
     ApogeePredictor          apogeePredictor(vve);
     ApogeePredictor          quadApogeePredictor(vve);
+    ApogeePredictor          polyApogeePredictor(vve);
     DataSaverMock            dataSaver;
     BurnoutStateMachine      sm(&dataSaver, &lp, &ad, &vve);
 
@@ -45,8 +47,8 @@ void test_burnout_state_machine_with_real_data(void)
     TEST_ASSERT_TRUE_MESSAGE(log.is_open(),
                              "Could not open logs/burnout_state_machine_log.csv");
 
-    log << "time_ms,ax_g,ay_g,az_g,alt_m,state,estAlt_m,estVel_mps,"
-           "predApogee_m,quadPredApogee_m,timeToApogee_s\n";
+    log << "time,accelx,accely,accelz,altitude,state,estAlt_m,estVel_mps,"
+           "predApogee_m,quadPredApogee_m,polyPredApogee_m,timeToApogee_s\n";
     log << std::fixed << std::setprecision(3);
 
     // ── variables for assertions ────────────────────────────────────────
@@ -62,7 +64,7 @@ void test_burnout_state_machine_with_real_data(void)
         hasData = true;
         SensorData d = provider.getNextDataPoint();
 
-        uint32_t noise_time = d.time + static_cast<uint32_t>(timeNoise(rng));
+        uint32_t noise_time = d.time; // + static_cast<uint32_t>(timeNoise(rng));
 
         DataPoint ax(noise_time, d.accelx);
         DataPoint ay(noise_time, d.accely);
@@ -78,18 +80,23 @@ void test_burnout_state_machine_with_real_data(void)
         if (sm.getState() == STATE_COAST_ASCENT){
             apogeePredictor.update();    
             quadApogeePredictor.quad_update();  
+            polyApogeePredictor.poly_update();
         }
-
         float predApogee       = apogeePredictor.getPredictedApogeeAltitude_m();
         float quadPredApogee  = quadApogeePredictor.getPredictedApogeeAltitude_m();
+        float polyPredApogee  = polyApogeePredictor.getPredictedApogeeAltitude_m();
         float timeToApogee     = apogeePredictor.getTimeToApogee_s();
         float estAlt           = vve.getEstimatedAltitude();
         float estVel           = vve.getEstimatedVelocity();
 
+        if (predApogee > 2000){
+            predApogee = 2000;
+        }
+
         // ── log one CSV row ────────────────────────────────────────────
         log << d.time << ',' << d.accelx << ',' << d.accely << ','
             << d.accelz << ',' << d.altitude << ',' << static_cast<int>(sm.getState()) << ','
-            << estAlt << ',' << estVel << ',' << predApogee << ',' << quadPredApogee << ','
+            << estAlt << ',' << estVel << ',' << predApogee << ',' << quadPredApogee << ',' << polyPredApogee << ','
             << timeToApogee << '\n';
 
         // ── book‑keeping for post‑test assertions ─────────────────────

@@ -25,15 +25,16 @@ def main(csv_path: str) -> None:
     df = pd.read_csv(csv_path)
 
     # Convert time to seconds for a tidier x‑axis
-    t = df["time_ms"] * 1e-3
+    t = df["time"] * 1e-3
 
     fig, ax_alt = plt.subplots(figsize=(10, 6))
 
     # ── altitude‑family traces (left axis) ────────────────────────────────
-    ax_alt.plot(t, df["alt_m"],            label="Altitude (baro)")
+    ax_alt.plot(t, df["altitude"],            label="Altitude (baro)")
     ax_alt.plot(t, df["estAlt_m"],         label="Estimated Altitude (VVE)")
     ax_alt.plot(t, df["predApogee_m"],     label="Predicted Apogee")
     ax_alt.plot(t, df['quadPredApogee_m'], label="Predicted Apogee (Quad)")
+    ax_alt.plot(t, df['polyPredApogee_m'], label="Predicted Apogee (Poly)")
     ax_alt.set_xlabel("Time (s)")
     ax_alt.set_ylabel("Altitude / Prediction (m)")
 
