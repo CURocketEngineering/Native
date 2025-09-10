@@ -89,13 +89,14 @@ With VS Code, you open a folder and work out of it...
 
 ## Running Tests
 
-### Running Standard Tests
+### Downloading Test Data
+Before running any of the test-data dependent tests, you need to download some test data. This is all past
+flight data from our rockets. Some of it is from MARTHA, others from Active Aero flight computers. 
+
+1. Download each CSV from [here](https://clemson.sharepoint.com/:f:/r/teams/ClemsonUniversityRocketEngineering/Shared%20Documents/CURE/Engineering%20Division/Flight%20Data/post-processed-test-data?csf=1&web=1&e=YOaCcY) and put them in the `data` folder.
+
+1. Read the directions in the [data/README.md](data/README.md) for directions on how to process your own data to be utilized in a new test or replace which data a test is already using.
+
+### Running Tests
 1. Click the PIO icon
 2. Under Native>Advanced click "Test" to run all the unit tests
-
-### Running CSV Tests
-1. Navigate to the Flight Logs Folder in the Microsoft Teams Drive
-2. Download the CSV files in the Active Aero Feb 18 - 2023 Launch Folder
-3. Place the CSV files in the Native/data folder (if one doesn't exist create it)
-4. Click the PIO icon
-5. Under Native>Advanced click "Test" to run all the unit tests

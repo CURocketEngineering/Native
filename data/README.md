@@ -1,12 +1,24 @@
-## Data Folder
+# Data Folder
 
-Place your CSV files here!
+## Data Preparation 
+
+### Processing Flight Data 
+
+1. Download CSV flight data from the Teams folder here: [CURE/Engineering Divison/Flight Data](https://clemson.sharepoint.com/:f:/r/teams/ClemsonUniversityRocketEngineering/Shared%20Documents/CURE/Engineering%20Division/Flight%20Data?csf=1&web=1&e=TvkbCZ)
+2. Add CSV files to this `data` folder.  
+3. Run the `format_converter.py` on the data. 
+  -It renames the columns to our standard format 
+  -It trims the data to only 30 seconds +- the peak altitude time  
+4. The csv data provider tool in `test/CSVMockData.h` can then digest the processed data for use in the unit tests 
+
+### Download pre-processed data 
+1. You can download pre-processed data from [CURE/Engineering Divison/Flight Data/post-processed-test-data](https://clemson.sharepoint.com/:f:/t/ClemsonUniversityRocketEngineering/Ep--KpIhKqlCuFsy4GkQsskBGVB4WuLDC-54oEgmoQIoRg?e=s4G1eD)
+2. Place those CSVs in this folder. 
+
+## Format 
 
 Right now its expected the CSVs will have the following columns in this order:
 `time,accelx,accely,accelz,gyrox,gyroy,gyroz,magx,magy,magz,altitude,pressure,temp`
-
-### Flight Data CSV Locations on Teams
-[CURE/Engineering Divison/Flight Data](https://clemson.sharepoint.com/:f:/r/teams/ClemsonUniversityRocketEngineering/Shared%20Documents/CURE/Engineering%20Division/Flight%20Data?csf=1&web=1&e=TvkbCZ)
 
 ### Example CSV
 ```
