@@ -100,3 +100,6 @@ flight data from our rockets. Some of it is from MARTHA, others from Active Aero
 ### Running Tests
 1. Click the PIO icon
 2. Under Native>Advanced click "Test" to run all the unit tests
+
+### Troubleshooting
+ - When clicking test, if each test fails with the same error "Could not find one of 'library.json, library.properties, module.json' manifest files in the package", try deleting the .pio folder. Solution thread [here](https://community.platformio.org/t/vscode-esp32-build-error-could-not-find-one-of-library-json-library-properties-manifest-files-in-package/29005)

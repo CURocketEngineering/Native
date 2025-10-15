@@ -7,3 +7,4 @@
 .vscode/
 *.csv
 secrets.json
+.vscode/settings.json
