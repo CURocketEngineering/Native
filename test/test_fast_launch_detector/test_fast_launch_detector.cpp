@@ -93,9 +93,9 @@ void test_acceleration_below_threshold(void) {
     // Use a threshold of 10 m/s^2; squared threshold = 100.
     FastLaunchDetector fld(10.0);
     // update with low acceleration value.
-    DataPoint dp1(1000, 1);
+    DataPoint dp1(1000, 1.0);
     AccelerationTriplet accel1 = { dp1, dp1, dp1 };
-    int result = fld.update(accel1);
+    fld.update(accel1);
     // [1,1,1] results in acceleration squared = 1^2+1^2+1^2 = 3
     TEST_ASSERT_FALSE(fld.hasLaunched());
 }
@@ -107,4 +107,5 @@ int main(){
     RUN_TEST(test_acceleration_edge_case);
     RUN_TEST(test_acceleration_above_threshold);
     RUN_TEST(test_acceleration_below_threshold);
+    return UNITY_END();
 }
