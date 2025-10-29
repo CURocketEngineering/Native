@@ -57,7 +57,7 @@ void test_initialization(void) {
     Telemetry telemetry(ssds, 2, mockRfdSerial);
 }
 
-//This does a lot of 
+//This does a lot of tests
 void test_a_full_second_of_ticks(void) {
     MockDataSaver mockXAcl, mockYAcl, mockZAcl, altitude;
     uint8_t xAclName = 1;
@@ -72,7 +72,8 @@ void test_a_full_second_of_ticks(void) {
     yAclData.addData(DataPoint(1, 6.969696f)); //01000000 11011111 00000111 11000000
     zAclData.addData(DataPoint(1, 1.234567f)); //00111111 10011110 00000110 01001011
     altitudeData.addData(DataPoint(1, 10000.0f)); //01000110 00011100 01000000 00000000
-    uint8_t expectedSentBytes[34] = {0, 0, 0, 51, 0, 0, 0, 0, 102, 64, 216, 144, 205, 64, 223, 7, 192, 63, 158, 6, 75, 0, 0, 0, 51, 0, 0, 0, 0, 8, 70, 28, 64, 0};
+    uint8_t expectedSentBytes[47] = {0, 0, 0, 51, 0, 0, 0, 0, 102, 64, 216, 144, 205, 64, 223, 7, 192, 63, 158, 6, 75, 0, 0, 0, 51, 0, 0, 0, 0, 102, 64, 216, 144, 205, 64, 223, 7, 192, 63, 158, 6, 75, 8, 70, 28, 64, 0};
+                                   //  START    | TIMESTAMP | ACCL|     FLOATX       |      FLOATY    |    FLOATZ     |   START    | TIMESTAMP | ACCL|     FLOATX       |      FLOATY    |    FLOATZ    |ALT| FLOAT_ALT   |
 
     SendableSensorData* ssds[] {
         new SendableSensorData(nullptr, (SensorDataHandler*[]) {&xAclData, &yAclData, &zAclData}, 3, 102, 2),
@@ -81,40 +82,32 @@ void test_a_full_second_of_ticks(void) {
     HardwareSerial mockRfdSerial;
     Telemetry telemetry(ssds, 2, mockRfdSerial);
 
-    int numPacketsSent = 0;
-    for (int i = 0; i < 100; i++) {
-        uint32_t timestamp = millis();
-        bool didSendPacket = telemetry.tick();
-        if (didSendPacket) {
-            bool didSendPacketAtRightTime = ((timestamp >= 475 && timestamp <= 525) || numPacketsSent == 0) || ((timestamp >= 975 && timestamp <= 1025) || numPacketsSent == 1);
-            TEST_ASSERT_EQUAL(didSendPacketAtRightTime, true);
-            numPacketsSent++;
-        }
-        int too_fast = millis() - timestamp;
-        if (too_fast < 10) {
-            delay(10 - too_fast);
-        }
-        if (millis() >= 1100) break;
-    }
+    TEST_ASSERT_EQUAL(telemetry.tick((uint32_t)500), true);
+    TEST_ASSERT_EQUAL(telemetry.tick((uint32_t)1000), true);
+
     printf("\n");
     for (int byte : mockRfdSerial.writeCalls) {
         printf(" %03d", byte);
     }
     printf("\n");
+    printf("\n");
     for (int byte : expectedSentBytes) {
         printf(" %03d", byte);
     }
     printf("\n");
-    TEST_ASSERT_EQUAL(expectedSentBytes[3], mockRfdSerial.writeCalls.at(3)); //START 2hz
+    TEST_ASSERT_EQUAL(expectedSentBytes[3], mockRfdSerial.writeCalls.at(3)); //START
     TEST_ASSERT_EQUAL(expectedSentBytes[8], mockRfdSerial.writeCalls.at(8)); //ACCL
     TEST_ASSERT_EQUAL(expectedSentBytes[9], mockRfdSerial.writeCalls.at(9)); //X byte 1
     TEST_ASSERT_EQUAL(expectedSentBytes[10], mockRfdSerial.writeCalls.at(10)); //X byte 2
     TEST_ASSERT_EQUAL(expectedSentBytes[11], mockRfdSerial.writeCalls.at(11)); //X byte 3
     TEST_ASSERT_EQUAL(expectedSentBytes[12], mockRfdSerial.writeCalls.at(12)); //X byte 4
 
+    //TODO: rewrite to account for the 2hz packet being sent before the 1st one;
     TEST_ASSERT_EQUAL(expectedSentBytes[24], mockRfdSerial.writeCalls.at(24)); //START 1hz
-    TEST_ASSERT_EQUAL(expectedSentBytes[29], mockRfdSerial.writeCalls.at(29)); //ALT
-
+    TEST_ASSERT_EQUAL(expectedSentBytes[41], mockRfdSerial.writeCalls.at(41)); //ALT byte 1
+    TEST_ASSERT_EQUAL(expectedSentBytes[42], mockRfdSerial.writeCalls.at(42)); //ALT byte 2
+    TEST_ASSERT_EQUAL(expectedSentBytes[43], mockRfdSerial.writeCalls.at(43)); //ALT byte 3
+    TEST_ASSERT_EQUAL(expectedSentBytes[44], mockRfdSerial.writeCalls.at(44)); //ALT byte 4
 }
 
 int main(void) {
