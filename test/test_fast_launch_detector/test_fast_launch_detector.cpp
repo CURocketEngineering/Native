@@ -30,7 +30,7 @@ void test_already_launched(void){
     TEST_ASSERT_TRUE(fld.hasLaunched());
     //new update
     int ret = fld.update(accel1);
-    TEST_ASSERT_EQUAL_INT(ALREADY_LAUNCHED, ret);
+    TEST_ASSERT_EQUAL_INT(FLD_ALREADY_LAUNCHED, ret);
 }
 
 /*
@@ -79,7 +79,7 @@ void test_acceleration_above_threshold(void) {
     DataPoint dp1(1000, 100.0);
     AccelerationTriplet accel1 = { dp1, dp1, dp1 };
     int result = fld.update(accel1);
-    TEST_ASSERT_EQUAL_INT(LAUNCH_DETECTED, result);
+    TEST_ASSERT_EQUAL_INT(FLD_LAUNCH_DETECTED, result);
 
     // acceleration squared is much higher than 10^2.
     TEST_ASSERT_TRUE(fld.hasLaunched());
