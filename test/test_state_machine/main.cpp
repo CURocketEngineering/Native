@@ -2,6 +2,7 @@
 #include "SimpleSimulation.h"   
 #include "state_estimation/StateMachine.h"
 #include "data_handling/DataPoint.h"
+#include "data_handling/DataSaverSPI.h"
 #include "DataSaver_mock.h"
 #include "state_estimation/States.h"
 #include "ArduinoHAL.h"  // if required for your platform
@@ -34,7 +35,8 @@ void test_init(){
     LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
-    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
+    FastLaunchDetector fld(30, 500);
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
 
     TEST_ASSERT_EQUAL(STATE_ARMED, sm.getState());
 }
@@ -43,7 +45,8 @@ void test_launch(){
     LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
-    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
+    FastLaunchDetector fld(30, 500);
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
 
     // Start sim
     SimpleSimulator sim(10000, 70, 3000, 10);
@@ -76,7 +79,8 @@ void test_apogee_detection(){
     LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
-    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
+    FastLaunchDetector fld(30, 500);
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
 
     // Start sim
     SimpleSimulator sim(3000, 70, 2000, 5);
@@ -114,7 +118,8 @@ void test_apogee_detection_noise(){
     LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
-    StateMachine sm(dataSaverPtr, &lp, &ad, &vve);
+    FastLaunchDetector fld(30, 500);
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
 
     // Start sim
     SimpleSimulator sim(10000, 70, 3000, 10);
@@ -144,6 +149,67 @@ void test_apogee_detection_noise(){
     TEST_ASSERT_UINT32_WITHIN(0, sim.getApogeeTimestamp(), ad.getApogee().timestamp_ms);
 }
 
+//Triggers fast launch detector then does not trigger launch detector during confirmation window
+//should clear post launch flag 
+/*void test_fast_launch_with_revert(){
+    LaunchDetector lp(30, 1000, 40);
+    ApogeeDetector ad;
+    VerticalVelocityEstimator vve;
+    FastLaunchDetector fld(30, 500);
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
+
+    // Start sim
+    SimpleSimulator sim(10000, 70, 3000, 10);
+}*/
+
+//
+void test_fast_launch_with_confirm(){
+    LaunchDetector lp(30, 1000, 40);
+    ApogeeDetector ad;
+    VerticalVelocityEstimator vve;
+    FastLaunchDetector fld(30, 50000);
+    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
+
+    // Start sim
+    SimpleSimulator sim(10000, 70, 3000, 10);
+
+    while (sim.getApogeeTimestamp() == 0) {
+        sim.tick();
+        DataPoint aclX(sim.getCurrentTime(), 0);
+        DataPoint aclY(sim.getCurrentTime(), 0);
+
+        // Adding 9.8 because the launchDetector expects measured acceleration
+        // I.e. 0m/s^2 stationary on ground is measured as 9.8m/s^2 by the accelerometer
+        DataPoint aclZ(sim.getCurrentTime(), sim.getIntertialVerticalAcl() + 9.8);
+        DataPoint alt(sim.getCurrentTime(), sim.getAltitude());
+        // std::cout << aclZ.data << "  mag: " << lp.getMedianAccelerationSquared() << " Ts: " << aclZ.timestamp_ms << std::endl;
+        AccelerationTriplet accel = {aclX, aclY, aclZ};
+        sm.update(accel, alt);
+    }
+
+    // Check that the FastLaunchDetector detected the launch
+    TEST_ASSERT_TRUE(fld.hasLaunched());
+
+    // Check that the launchDetector detected the launch
+    TEST_ASSERT_TRUE(lp.isLaunched());
+
+    // Check that the lp was within 1s of the actual launch time
+    TEST_ASSERT_UINT32_WITHIN(500, sim.getLaunchTimestamp(), lp.getLaunchedTime());
+
+    // Check that the state machine state is greater than ARMED
+    TEST_ASSERT_GREATER_THAN(STATE_ARMED, sm.getState());
+
+    // Check that the state machine state is greater than SOFT_ASCENT
+    TEST_ASSERT_GREATER_THAN(STATE_SOFT_ASCENT, sm.getState());
+
+    // Check that LD launch time is greater than FLD launch time
+    TEST_ASSERT_GREATER_THAN(fld.getLaunchedTime(), lp.getLaunchedTime());
+
+    // Check that data saver is in post launch mode
+    //TEST_ASSERT_TRUE(datasaver.quickGetPostLaunchMode());
+
+}
+
 //
 // Main: Run all tests
 //
@@ -153,5 +219,6 @@ int main(void) {
     RUN_TEST(test_launch);
     RUN_TEST(test_apogee_detection);
     RUN_TEST(test_state_machine_with_real_data);
+    RUN_TEST(test_fast_launch_with_confirm);
     return UNITY_END();
 }

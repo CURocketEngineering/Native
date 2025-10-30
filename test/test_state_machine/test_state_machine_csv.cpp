@@ -27,7 +27,8 @@ void test_state_machine_with_real_data(void) {
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
     DataSaverMock dataSaver;
-    StateMachine sm(&dataSaver, &lp, &ad, &vve);
+    FastLaunchDetector fld (30, 500);
+    StateMachine sm(&dataSaver, &lp, &ad, &vve, &fld);
     
     // Create output CSV file for analysis
     std::ofstream outputFile("state_machine_results.csv");
