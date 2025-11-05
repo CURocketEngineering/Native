@@ -151,24 +151,70 @@ void test_apogee_detection_noise(){
 
 //Triggers fast launch detector then does not trigger launch detector during confirmation window
 //should clear post launch flag 
-/*void test_fast_launch_with_revert(){
+void test_fast_launch_with_revert(){
     LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
-    FastLaunchDetector fld(30, 500);
-    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
+    FastLaunchDetector fld(30, 100);
 
-    // Start sim
-    SimpleSimulator sim(10000, 70, 3000, 10);
-}*/
+    DataSaverSPI* dss;
+    Adafruit_SPIFlash* flash;
+    flash = new Adafruit_SPIFlash();
+    dss = new DataSaverSPI(100, flash);
 
-//
+    StateMachine sm(dss, &lp, &ad, &vve, &fld);
+
+    //feed stateMachine one point of acceleration data to trigger fld
+    DataPoint fldaclX(0, 100);
+    DataPoint fldaclY(0, 100);
+    DataPoint fldaclZ(0, 100);
+    DataPoint fldalt(0, 0);
+    AccelerationTriplet fldaccel = {fldaclX, fldaclY, fldaclZ};
+    sm.update(fldaccel, fldalt);
+
+    // Check that the FastLaunchDetector detected a launch
+    TEST_ASSERT_TRUE(fld.hasLaunched());
+
+    // Check that data saver is temporarily in Post launch Mode
+    TEST_ASSERT_TRUE(dss->quickGetPostLaunchMode());
+
+    //feed 100 points of false data to revert fld after no confirmation
+    for (int i = 0; i < 100; i++) {
+        DataPoint aclX(i * 10, 0);
+        DataPoint aclY(i * 10, 0);
+        DataPoint aclZ(i * 10, 0);
+        DataPoint alt(i * 10, 0);
+        // std::cout << aclZ.data << "  mag: " << lp.getMedianAccelerationSquared() << " Ts: " << aclZ.timestamp_ms << std::endl;
+        AccelerationTriplet accel = {aclX, aclY, aclZ};
+        sm.update(accel, alt);
+    }   
+    // Check that the FastLaunchDetector reverted
+    TEST_ASSERT_FALSE(fld.hasLaunched());
+
+    // Check that the launchDetector did not detect a launc
+    TEST_ASSERT_FALSE(lp.isLaunched());
+
+    // Check that the state machine state is ARMED
+    TEST_ASSERT_EQUAL(STATE_ARMED, sm.getState());
+
+    // Check that data saver is not in post launch mode
+    TEST_ASSERT_FALSE(dss->quickGetPostLaunchMode());
+}
+
+//Triggers fast launch detector then does trigger launch detector during confirmation window
+//should not clear post launch flag, should be in ASCENT, Fld should detect launch sooner than lp
 void test_fast_launch_with_confirm(){
     LaunchDetector lp(30, 1000, 40);
     ApogeeDetector ad;
     VerticalVelocityEstimator vve;
-    FastLaunchDetector fld(30, 50000);
-    StateMachine sm(dataSaverPtr, &lp, &ad, &vve, &fld);
+    FastLaunchDetector fld(30, 50000); //very high confirmation window
+
+    DataSaverSPI* dss;
+    Adafruit_SPIFlash* flash;
+    flash = new Adafruit_SPIFlash();
+    dss = new DataSaverSPI(100, flash);
+
+    StateMachine sm(dss, &lp, &ad, &vve, &fld);
 
     // Start sim
     SimpleSimulator sim(10000, 70, 3000, 10);
@@ -206,8 +252,7 @@ void test_fast_launch_with_confirm(){
     TEST_ASSERT_GREATER_THAN(fld.getLaunchedTime(), lp.getLaunchedTime());
 
     // Check that data saver is in post launch mode
-    //TEST_ASSERT_TRUE(datasaver.quickGetPostLaunchMode());
-
+    TEST_ASSERT_TRUE(dss->quickGetPostLaunchMode());
 }
 
 //
@@ -219,6 +264,7 @@ int main(void) {
     RUN_TEST(test_launch);
     RUN_TEST(test_apogee_detection);
     RUN_TEST(test_state_machine_with_real_data);
+    RUN_TEST(test_fast_launch_with_revert);
     RUN_TEST(test_fast_launch_with_confirm);
     return UNITY_END();
 }
