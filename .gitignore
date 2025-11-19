@@ -8,3 +8,4 @@
 .vscode/extensions.json
 *.csv
 secrets.json
+.vscode/settings.json
