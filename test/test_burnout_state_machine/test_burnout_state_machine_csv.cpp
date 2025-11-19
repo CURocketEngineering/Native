@@ -23,7 +23,7 @@
 // - 3674269.348155
 
 static std::default_random_engine rng{42};
-static std::normal_distribution<float> timeNoise(0.0f, 0.0f); // ms
+static std::normal_distribution<float> timeNoise(0.0f, 1.0f); // ms
 
 void test_burnout_state_machine_with_real_data(void)
 {
