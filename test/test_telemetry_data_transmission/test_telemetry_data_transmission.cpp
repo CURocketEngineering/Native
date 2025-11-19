@@ -81,9 +81,11 @@ void test_a_full_second_of_ticks(void) {
     uint8_t expectedSentBytes[61] = {0, 0, 0, 51, 0, 0, 0, 0, 5, 0, 0, 0, 0, 102, 64, 216, 144, 205, 64, 223, 7, 192, 63, 158, 6, 75, 0, 0, 0, 52, 0, 0, 0, 51, 0, 0, 0, 0, 5, 0, 0, 0, 0, 102, 64, 216, 144, 205, 64, 223, 7, 192, 63, 158, 6, 75, 8, 70, 28, 64, 0};
                                    //  START    | TIMESTAMP |NUM| sent pkts| ACCL|     FLOATX       |      FLOATY    |    FLOATZ     |    END     |   START    | TIMESTAMP |NUM|sent pkts| ACCL|     FLOATX       |      FLOATY    |    FLOATZ    |ALT| FLOAT_ALT   |
 
+    SensorDataHandler * accelerationTriplet[3] = {&xAclData, &yAclData, &zAclData};
+
     SendableSensorData* ssds[] {
         new SendableSensorData(&numberSentPackets, nullptr, 0, 0, 2),
-        new SendableSensorData(nullptr, (SensorDataHandler*[]) {&xAclData, &yAclData, &zAclData}, 3, 102, 2),
+        new SendableSensorData(nullptr, accelerationTriplet, 3, 102, 2),
         new SendableSensorData(&altitudeData, nullptr, 0, 0, 1)
     };
     Stream mockRfdSerial;
@@ -93,12 +95,12 @@ void test_a_full_second_of_ticks(void) {
     TEST_ASSERT_EQUAL(telemetry.tick((uint32_t)1000), true);
 
     printf("\n");
-    for (int byte : mockRfdSerial.writeCalls) {
+    for (uint8_t byte : mockRfdSerial.writeCalls) {
         printf(" %03d", byte);
     }
     printf("\n");
     printf("\n");
-    for (int byte : expectedSentBytes) {
+    for (uint8_t byte : expectedSentBytes) {
         printf(" %03d", byte);
     }
     printf("\n");
