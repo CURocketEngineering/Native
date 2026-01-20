@@ -51,9 +51,11 @@ void test_initialization(void) {
     SensorDataHandler altitudeData(altName, &altitude);
     SensorDataHandler numberSentPackets(packetCounterName, &packetCounter);
 
+    SensorDataHandler * accelerationTriplet[3] = {&xAclData, &yAclData, &zAclData};
+
     SendableSensorData* ssds[] {
         new SendableSensorData(&numberSentPackets, nullptr, 0, 0, 2),
-        new SendableSensorData(nullptr, (SensorDataHandler*[]) {&xAclData, &yAclData, &zAclData}, 3, 102, 2),
+        new SendableSensorData(nullptr, accelerationTriplet, 3, 102, 2),
         new SendableSensorData(&altitudeData, nullptr, 0, 0, 1),
     };
     Stream mockRfdSerial;
