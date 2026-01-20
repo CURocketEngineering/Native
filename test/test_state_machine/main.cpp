@@ -82,8 +82,7 @@ void test_apogee_detection(){
     SimpleSimulator sim(3000, 70, 2000, 5);
 
     // init noise for acl and alt
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    std::mt19937 gen(42); 
     std::normal_distribution<float> aclNoise(0, 5);
     std::normal_distribution<float> altNoise(0, 5);
 

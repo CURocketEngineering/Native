@@ -67,7 +67,9 @@
         "format": "cpp",
         "span": "cpp",
         "cinttypes": "cpp",
-        "csignal": "cpp"
+        "csignal": "cpp",
+        "text_encoding": "cpp",
+        "bitset": "cpp"
     },
     "cSpell.words": [
         "DATAPOINT",
