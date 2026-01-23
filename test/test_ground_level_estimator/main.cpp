@@ -1,34 +1,3 @@
-/*#define DEBUG 
-#include "unity.h"
-#include "state_estimation/GroundLevelEstimator.h"
-#include "ArduinoHAL.h" 
-
-// Use a mock Serial for debug prints in tests
-MockSerial Serial;
-
-void setUp(void) {
-    Serial.clear();
-}
-
-void tearDown(void) {
-    Serial.clear();
-}
-
-//Go through the header file and check what each function promises
-//For example: For the constructor launched should be false, egl should be 0.0,
-//and sample count should be 0
-
-// =============================================================================
-// Main
-// =============================================================================
-
-int main(void) {
-    UNITY_BEGIN();
-    RUN_TEST(test_reset);
-    return UNITY_END();
-}
-*/
-
 #define DEBUG
 #include "unity.h"
 #include "state_estimation/GroundLevelEstimator.h"
