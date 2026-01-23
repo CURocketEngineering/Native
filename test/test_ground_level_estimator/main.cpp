@@ -348,7 +348,7 @@ void test_early_launch_detection(void)
 }
 
 // -----------------------------------------------------------------------------
-// Test 11 – Typo in method name (launchDeteched vs launchDetected)
+// Test 11 – Typo in method name (launchDetected vs launchDetected)
 // -----------------------------------------------------------------------------
 void test_launch_detection_method(void)
 {
@@ -356,7 +356,7 @@ void test_launch_detection_method(void)
     
     estimator.update(300.0f);
     
-    // Note: The method is spelled "launchDeteched" (likely a typo)
+    // Note: The method is spelled "launchDetected" (likely a typo)
     // This test documents the actual API
     estimator.launchDetected();
     
