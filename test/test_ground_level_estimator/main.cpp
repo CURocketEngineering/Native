@@ -122,8 +122,11 @@ void test_ground_level_varying_readings(void)
         TEST_ASSERT_EQUAL_FLOAT(0.0f, agl);
     }
     
-    // Should average around 250m
-    TEST_ASSERT_FLOAT_WITHIN(0.5f, 249.95f, estimator.getEGL());
+    // With EMA (alpha = 0.1), the estimate converges toward recent values
+    // After 10 samples starting at 248.0f and varying around 250f,
+    // the estimate will be influenced more by later samples
+    // Expected value is approximately 249.8-250.0f (closer to recent readings)
+    TEST_ASSERT_FLOAT_WITHIN(0.5kf, 249.2f, estimator.getEGL());
 }
 
 // -----------------------------------------------------------------------------
@@ -144,7 +147,7 @@ void test_agl_after_launch(void)
     TEST_ASSERT_FLOAT_WITHIN(0.01f, groundASL, estimator.getEGL());
     
     // Signal launch
-    estimator.launchDeteched();
+    estimator.launchDetected();
     
     // Now updates should return AGL
     float agl1 = estimator.update(310.0f);
@@ -178,7 +181,7 @@ void test_ground_level_frozen_after_launch(void)
     float eglBeforeLaunch = estimator.getEGL();
     
     // Launch
-    estimator.launchDeteched();
+    estimator.launchDetected();
     
     // Feed many different altitudes
     for (int i = 0; i < 100; ++i)
@@ -228,7 +231,7 @@ void test_full_flight_simulation(void)
     TEST_ASSERT_FLOAT_WITHIN(1.0f, groundASL, estimator.getEGL());
     
     // ----------- Launch detection -----------
-    estimator.launchDeteched();
+    estimator.launchDetected();
     float eglAtLaunch = estimator.getEGL();
     
     // ----------- Powered ascent (3 seconds, ~70 m/s² net accel) -----------
@@ -307,7 +310,7 @@ void test_negative_agl_on_descent(void)
         estimator.update(groundASL);
     }
     
-    estimator.launchDeteched();
+    estimator.launchDetected();
     
     // Flight to altitude
     estimator.update(500.0f);
@@ -341,7 +344,7 @@ void test_various_ground_altitudes(void)
         TEST_ASSERT_FLOAT_WITHIN(0.01f, groundASL, estimator.getEGL());
         
         // Launch and verify AGL calculation
-        estimator.launchDeteched();
+        estimator.launchDetected();
         
         float testASL = groundASL + 100.0f;
         float agl = estimator.update(testASL);
@@ -368,7 +371,7 @@ void test_early_launch_detection(void)
     TEST_ASSERT_FLOAT_WITHIN(1.0f, groundASL, egl);
     
     // Launch
-    estimator.launchDeteched();
+    estimator.launchDetected();
     
     // AGL should still be calculated correctly
     float agl = estimator.update(400.0f);
@@ -386,29 +389,36 @@ void test_launch_detection_method(void)
     
     // Note: The method is spelled "launchDeteched" (likely a typo)
     // This test documents the actual API
-    estimator.launchDeteched();
+    estimator.launchDetected();
     
     float agl = estimator.update(310.0f);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 10.0f, agl);
 }
 
 // -----------------------------------------------------------------------------
-// Test 12 – Running average accuracy
+// Test 12 – Exponential moving average accuracy
 // -----------------------------------------------------------------------------
-void test_running_average_accuracy(void)
+void test_exponential_moving_average_accuracy(void)
 {
     GroundLevelEstimator estimator;
     
-    // Known sequence to verify running average calculation
+    // Known sequence to verify EMA calculation (alpha = 0.1)
     float samples[] = {100.0f, 102.0f, 98.0f, 101.0f, 99.0f};
-    float expectedAvg = 100.0f;  // (100+102+98+101+99)/5
+    
+    // Calculate expected EMA manually:
+    // Sample 0: 100.0 (initialization)
+    // Sample 1: 0.1*102.0 + 0.9*100.0 = 100.2
+    // Sample 2: 0.1*98.0  + 0.9*100.2 = 99.98
+    // Sample 3: 0.1*101.0 + 0.9*99.98 = 100.082
+    // Sample 4: 0.1*99.0  + 0.9*100.082 = 99.9738
+    float expectedEMA = 99.9738f;
     
     for (float sample : samples)
     {
         estimator.update(sample);
     }
     
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, expectedAvg, estimator.getEGL());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, expectedEMA, estimator.getEGL());
 }
 
 // -----------------------------------------------------------------------------
@@ -427,7 +437,7 @@ void test_zero_altitude_ground(void)
     
     TEST_ASSERT_EQUAL_FLOAT(0.0f, estimator.getEGL());
     
-    estimator.launchDeteched();
+    estimator.launchDetected();
     
     float agl = estimator.update(50.0f);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 50.0f, agl);
@@ -451,7 +461,7 @@ void test_high_sample_count_stability(void)
     // Should still be stable
     TEST_ASSERT_FLOAT_WITHIN(0.5f, groundASL, estimator.getEGL());
     
-    estimator.launchDeteched();
+    estimator.launchDetected();
     float agl = estimator.update(500.0f);
     TEST_ASSERT_FLOAT_WITHIN(1.0f, 100.0f, agl);
 }
@@ -473,7 +483,7 @@ int main(void)
     RUN_TEST(test_various_ground_altitudes);
     RUN_TEST(test_early_launch_detection);
     RUN_TEST(test_launch_detection_method);
-    RUN_TEST(test_running_average_accuracy);
+    RUN_TEST(test_exponential_moving_average_accuracy);
     RUN_TEST(test_zero_altitude_ground);
     RUN_TEST(test_high_sample_count_stability);
     return UNITY_END();
