@@ -95,7 +95,7 @@ void test_ground_level_varying_readings(void)
     // After 10 samples starting at 248.0f and varying around 250f,
     // the estimate will be influenced more by later samples
     // Expected value is approximately 249.8-250.0f (closer to recent readings)
-    TEST_ASSERT_FLOAT_WITHIN(0.5kf, 249.2f, estimator.getEGL());
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 249.2f, estimator.getEGL());
 }
 
 // -----------------------------------------------------------------------------
