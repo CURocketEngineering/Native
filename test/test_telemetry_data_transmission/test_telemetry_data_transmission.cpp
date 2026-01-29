@@ -1,4 +1,5 @@
 #include "unity.h"
+#include <array>
 #include "data_handling/Telemetry.h"
 #include "data_handling/DataPoint.h"
 #include "data_handling/DataSaver.h"
@@ -49,17 +50,18 @@ void test_initialization(void) {
     SensorDataHandler yAclData(yAclName, &mockYAcl);
     SensorDataHandler zAclData(zAclName, &mockZAcl);
     SensorDataHandler altitudeData(altName, &altitude);
-    SensorDataHandler numberSentPackets(packetCounterName, &packetCounter);
 
-    SensorDataHandler * accelerationTriplet[3] = {&xAclData, &yAclData, &zAclData};
+    std::array<SensorDataHandler*, 3> accelerationTriplet{};
+    accelerationTriplet[0] = &xAclData;
+    accelerationTriplet[1] = &yAclData;
+    accelerationTriplet[2] = &zAclData;
 
-    SendableSensorData* ssds[] {
-        new SendableSensorData(&numberSentPackets, nullptr, 0, 0, 2),
-        new SendableSensorData(nullptr, accelerationTriplet, 3, 102, 2),
-        new SendableSensorData(&altitudeData, nullptr, 0, 0, 1),
+    std::array<SendableSensorData*, 2> ssds{
+        new SendableSensorData(accelerationTriplet, 102, 2),
+        new SendableSensorData(&altitudeData, 1),
     };
     Stream mockRfdSerial;
-    Telemetry telemetry(ssds, 3, mockRfdSerial);
+    Telemetry telemetry(ssds, mockRfdSerial);
 }
 
 //This does a lot of tests
@@ -80,18 +82,35 @@ void test_a_full_second_of_ticks(void) {
     zAclData.addData(DataPoint(1, 1.234567f)); //00111111 10011110 00000110 01001011
     altitudeData.addData(DataPoint(1, 10000.0f)); //01000110 00011100 01000000 00000000
     numberSentPackets.addData(DataPoint(1, 1));
-    uint8_t expectedSentBytes[61] = {0, 0, 0, 51, 0, 0, 0, 0, 5, 0, 0, 0, 0, 102, 64, 216, 144, 205, 64, 223, 7, 192, 63, 158, 6, 75, 0, 0, 0, 52, 0, 0, 0, 51, 0, 0, 0, 0, 5, 0, 0, 0, 0, 102, 64, 216, 144, 205, 64, 223, 7, 192, 63, 158, 6, 75, 8, 70, 28, 64, 0};
-                                   //  START    | TIMESTAMP |NUM| sent pkts| ACCL|     FLOATX       |      FLOATY    |    FLOATZ     |    END     |   START    | TIMESTAMP |NUM|sent pkts| ACCL|     FLOATX       |      FLOATY    |    FLOATZ    |ALT| FLOAT_ALT   |
+    uint8_t expectedSentBytes[51] = {   0, 0, 0, 51, // Start (4)
+                                        0, 0, 1, 244,  // Timestamp (4)
+                                        102,         // Acceleration Label (1)
+                                        64, 216, 144, 205, // X Acceleration (4)
+                                        64, 223, 7, 192,   // Y Acceleration (4)
+                                        63, 158, 6, 75,    // Z Acceleration (4)
+                                        0, 0, 0, 52, // End (4)
+                                        0, 0, 0, 51, // Start (4)
+                                        0, 0, 3, 232,  // Timestamp (4)
+                                        102,         // Acceleration Label (1)
+                                        64, 216, 144, 205, // X Acceleration (4)
+                                        64, 223, 7, 192,   // Y Acceleration (4)
+                                        63, 158, 6, 75,    // Z Acceleration (4)
+                                        8,            // Altitude Label (1)
+                                        70, 28, 64, 0,    // Altitude (4)
+    };
+    // Total bytes: 51
 
-    SensorDataHandler * accelerationTriplet[3] = {&xAclData, &yAclData, &zAclData};
+    std::array<SensorDataHandler*, 3> accelerationTriplet{};
+    accelerationTriplet[0] = &xAclData;
+    accelerationTriplet[1] = &yAclData;
+    accelerationTriplet[2] = &zAclData;
 
-    SendableSensorData* ssds[] {
-        new SendableSensorData(&numberSentPackets, nullptr, 0, 0, 2),
-        new SendableSensorData(nullptr, accelerationTriplet, 3, 102, 2),
-        new SendableSensorData(&altitudeData, nullptr, 0, 0, 1)
+    std::array<SendableSensorData*, 2> ssds{
+        new SendableSensorData(accelerationTriplet, 102, 2),
+        new SendableSensorData(&altitudeData, 1),
     };
     Stream mockRfdSerial;
-    Telemetry telemetry(ssds, 3, mockRfdSerial);
+    Telemetry telemetry(ssds, mockRfdSerial);
 
     TEST_ASSERT_EQUAL(telemetry.tick((uint32_t)500), true);
     TEST_ASSERT_EQUAL(telemetry.tick((uint32_t)1000), true);
@@ -106,18 +125,12 @@ void test_a_full_second_of_ticks(void) {
         printf(" %03d", byte);
     }
     printf("\n");
-    TEST_ASSERT_EQUAL(expectedSentBytes[3], mockRfdSerial.writeCalls.at(3)); //START
-    TEST_ASSERT_EQUAL(expectedSentBytes[8+14], mockRfdSerial.writeCalls.at(8+14)); //ACCL
-    TEST_ASSERT_EQUAL(expectedSentBytes[9+14], mockRfdSerial.writeCalls.at(9+14)); //X byte 1
-    TEST_ASSERT_EQUAL(expectedSentBytes[10+14], mockRfdSerial.writeCalls.at(10+14)); //X byte 2
-    TEST_ASSERT_EQUAL(expectedSentBytes[11+14], mockRfdSerial.writeCalls.at(11+14)); //X byte 3
-    TEST_ASSERT_EQUAL(expectedSentBytes[12+14], mockRfdSerial.writeCalls.at(12+14)); //X byte 4
-
-    TEST_ASSERT_EQUAL(expectedSentBytes[24+14], mockRfdSerial.writeCalls.at(24+14)); //START 1hz
-    TEST_ASSERT_EQUAL(expectedSentBytes[41+14], mockRfdSerial.writeCalls.at(41+14)); //ALT byte 1
-    TEST_ASSERT_EQUAL(expectedSentBytes[42+14], mockRfdSerial.writeCalls.at(42+14)); //ALT byte 2
-    TEST_ASSERT_EQUAL(expectedSentBytes[43+14], mockRfdSerial.writeCalls.at(43+14)); //ALT byte 3
-    TEST_ASSERT_EQUAL(expectedSentBytes[44+14], mockRfdSerial.writeCalls.at(44+14)); //ALT byte 4
+    // Test all bytes sent correctly for first second
+    for (int i = 0; i < 51; i++) {
+        char message[50];
+        sprintf(message, "Byte %d mismatch", i);
+        TEST_ASSERT_EQUAL_MESSAGE(expectedSentBytes[i], mockRfdSerial.writeCalls.at(i), message);
+    }
 
     printf("2 SECONDS:\n");
     mockRfdSerial.clearWriteCalls();
@@ -134,18 +147,22 @@ void test_a_full_second_of_ticks(void) {
         printf(" %03d", byte);
     }
     printf("\n");
-    TEST_ASSERT_EQUAL(expectedSentBytes[3], mockRfdSerial.writeCalls.at(3)); //START
-    TEST_ASSERT_EQUAL(expectedSentBytes[8+14], mockRfdSerial.writeCalls.at(8+14)); //ACCL
-    TEST_ASSERT_EQUAL(expectedSentBytes[9+14], mockRfdSerial.writeCalls.at(9+14)); //X byte 1
-    TEST_ASSERT_EQUAL(expectedSentBytes[10+14], mockRfdSerial.writeCalls.at(10+14)); //X byte 2
-    TEST_ASSERT_EQUAL(expectedSentBytes[11+14], mockRfdSerial.writeCalls.at(11+14)); //X byte 3
-    TEST_ASSERT_EQUAL(expectedSentBytes[12+14], mockRfdSerial.writeCalls.at(12+14)); //X byte 4
+    // Test all bytes sent correctly for second second
+    for (int i = 0; i < 51; i++) {
+        // Skip timestamp bytes
+        if (i >= 4 && i <= 7) {
+            continue;
+        }
+        if (i >= 29 && i <= 32) {
+            continue;
+        }
 
-    TEST_ASSERT_EQUAL(expectedSentBytes[24+14], mockRfdSerial.writeCalls.at(24+14)); //START 1hz
-    TEST_ASSERT_EQUAL(expectedSentBytes[41+14], mockRfdSerial.writeCalls.at(41+14)); //ALT byte 1
-    TEST_ASSERT_EQUAL(expectedSentBytes[42+14], mockRfdSerial.writeCalls.at(42+14)); //ALT byte 2
-    TEST_ASSERT_EQUAL(expectedSentBytes[43+14], mockRfdSerial.writeCalls.at(43+14)); //ALT byte 3
-    TEST_ASSERT_EQUAL(expectedSentBytes[44+14], mockRfdSerial.writeCalls.at(44+14)); //ALT byte 4
+
+        char message[50];
+        sprintf(message, "Byte %d mismatch", i);
+        TEST_ASSERT_EQUAL_MESSAGE(expectedSentBytes[i], mockRfdSerial.writeCalls.at(i),
+                                    message);
+    }
 }
 
 int main(void) {
