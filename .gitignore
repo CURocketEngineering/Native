@@ -5,6 +5,7 @@
 .vscode/ipch
 .vscode/settings.json
 .vscode/
+.vscode/extensions.json
 *.csv
 secrets.json
 .vscode/settings.json
