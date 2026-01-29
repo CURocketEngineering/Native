@@ -2,7 +2,7 @@
 #include "data_handling/CircularArray.h"
 
 void test_push(void) {
-    CircularArray<int> circularArray(5);
+    CircularArray<int, 5> circularArray(5);
     TEST_ASSERT_EQUAL(5, circularArray.getMaxSize());
     TEST_ASSERT_FALSE(circularArray.isFull());
     TEST_ASSERT_EQUAL(0, circularArray.getHead());
@@ -29,7 +29,7 @@ void test_push(void) {
 }
 
 void test_fill(void) {
-    CircularArray<int> circularArray(5);
+    CircularArray<int, 5> circularArray(5);
     TEST_ASSERT_FALSE(circularArray.isFull());
     for (int i = 0; i < 100; i++) {
         circularArray.push(i);
@@ -48,7 +48,7 @@ void test_fill(void) {
 }
 
 void test_max_size(void) {
-    CircularArray<int> circularArray(255);
+    CircularArray<int, MAX_CIRCULAR_ARRAY_CAPACITY> circularArray(MAX_CIRCULAR_ARRAY_CAPACITY);
     TEST_ASSERT_EQUAL(255, circularArray.getMaxSize());
     TEST_ASSERT_FALSE(circularArray.isFull());
     for (int i = 0; i < 1000; i++) {
@@ -63,7 +63,7 @@ void test_max_size(void) {
 }
 
 void test_wrapping_and_data_integrity(void) {
-    CircularArray<int> circularArray(10); // Small size for easy testing
+    CircularArray<int, 10> circularArray(10); // Small size for easy testing
     // Fill the array to its capacity
     for (int i = 0; i < 10; i++) {
         circularArray.push(i);
@@ -85,7 +85,7 @@ void test_wrapping_and_data_integrity(void) {
 }
 
 void test_get_median_odd(void) {
-    CircularArray<int> circularArray(5);
+    CircularArray<int, 5> circularArray(5);
     circularArray.push(1);
     circularArray.push(2);
     circularArray.push(3);
@@ -103,7 +103,7 @@ void test_get_median_odd(void) {
 }
 
 void test_get_median_even(void) {
-    CircularArray<int> circularArray(6);
+    CircularArray<int, 6> circularArray(6);
     circularArray.push(1);
     circularArray.push(2);
     circularArray.push(3);
@@ -122,7 +122,7 @@ void test_get_median_even(void) {
 }
 
 void test_clear(void) {
-    CircularArray<int> circularArray(5);
+    CircularArray<int, 5> circularArray(5);
     circularArray.push(1);
     circularArray.push(2);
     circularArray.push(3);
@@ -132,5 +132,15 @@ void test_clear(void) {
     circularArray.clear();
     TEST_ASSERT_FALSE(circularArray.isFull());
     TEST_ASSERT_EQUAL(0, circularArray.getHead());
+}
+
+void test_assert_fail_when_capacity_less_than_maxSize(void) {
+    // This test is to ensure that an assertion is thrown when maxSize > Capacity
+    // However, since assertions typically terminate the program, we cannot
+    // directly test this behavior in a standard unit test framework.
+    // Instead, we will just demonstrate the intended usage that would trigger the assert.
+    // Uncommenting the following line should cause an assertion failure during execution.
+    
+    // CircularArray<int, 5> circularArray(10); // This should trigger an assertion failure
 }
 

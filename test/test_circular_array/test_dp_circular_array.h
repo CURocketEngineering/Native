@@ -3,18 +3,18 @@
 #include "data_handling/SensorDataHandler.h"
 
 void test_CircularArray_MaxSize(void) {
-    CircularArray<DataPoint> circularArray(5);
+    CircularArray<DataPoint, 5> circularArray(5);
     TEST_ASSERT_EQUAL_INT(5, circularArray.getMaxSize());
 }
 
 void test_CircularArray_EmptyState(void) {
-    CircularArray<DataPoint> circularArray(5);
+    CircularArray<DataPoint, 5> circularArray(5);
     TEST_ASSERT_FALSE(circularArray.isFull());
     TEST_ASSERT_EQUAL_INT(0, circularArray.getHead());
 }
 
 void test_CircularArray_Median(void) {
-    CircularArray<DataPoint> circularArray(5);
+    CircularArray<DataPoint, 5> circularArray(5);
 
     TEST_ASSERT_EQUAL_FLOAT(0, circularArray.getMedian().data);
 
@@ -37,7 +37,7 @@ void test_CircularArray_Median(void) {
 }
 
 void test_CircularArray_Misc(void) {
-    CircularArray<DataPoint> circularArray(5);
+    CircularArray<DataPoint, 5> circularArray(5);
 
     circularArray.push(DataPoint(1, 1.0));
     circularArray.push(DataPoint(2, 2.0));

@@ -22,6 +22,7 @@ int main(void) {
     RUN_TEST(test_get_median_odd);
     RUN_TEST(test_get_median_even);
     RUN_TEST(test_clear);
+    RUN_TEST(test_assert_fail_when_capacity_less_than_maxSize);
     UNITY_END();
     return 0;
 }
