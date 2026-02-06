@@ -40,7 +40,7 @@ void test_isLow_behavior(void)
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_mid_scale_voltage);
+    RUN_TEST(test_readvoltage);
     RUN_TEST(test_isLow_behavior);
     return UNITY_END();
 }
