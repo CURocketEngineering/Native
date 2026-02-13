@@ -56,6 +56,20 @@ void test_flush_buffer(void) {
     TEST_ASSERT_EQUAL(1, dss->getBufferFlushes());
 }
 
+void test_clearplm_next_write(void){
+    // Write some data points to flash to move the nextWriteAddress forward
+    for (int i = 0; i < 50; i++) {
+        DataPoint dp(500 + i * 100, 1.0);
+        dss->saveDataPoint(dp, 1);
+    }
+
+    // Capture the nextWriteAddress before clearing post-launch mode
+    uint32_t nextWriteBefore = dss->getNextWriteAddress();
+    dss->clearPostLaunchMode();
+    uint32_t nextWriteAfter = dss->getNextWriteAddress();
+    TEST_ASSERT_EQUAL_UINT32(nextWriteBefore, nextWriteAfter);
+}
+
 void test_erase_all_data(void) {
     dss->eraseAllData();
     TEST_ASSERT_EQUAL_UINT32(DATA_START_ADDRESS, dss->getNextWriteAddress());
@@ -80,12 +94,14 @@ void test_timestamp_record_size(void) {
     TEST_ASSERT_EQUAL(5, sizeof(record)); // 1 byte for name, 4 bytes for timestamp
 }
 
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_record_size);
     RUN_TEST(test_timestamp_record_size);
     RUN_TEST(test_save_data_point);
     RUN_TEST(test_flush_buffer);
+    RUN_TEST(test_clearplm_next_write);
     RUN_TEST(test_erase_all_data);
     RUN_TEST(test_launch_detected);
     return UNITY_END();
