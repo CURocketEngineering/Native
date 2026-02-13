@@ -390,6 +390,29 @@ void test_exponential_moving_average_accuracy(void)
     TEST_ASSERT_FLOAT_WITHIN(0.01f, expectedEMA, estimator.getEGL());
 }
 
+void test_ground_level_estimation_can_change_after_many_samples(void)
+{
+    GroundLevelEstimator estimator;
+    
+    // Feed many samples at one altitude
+    for (int i = 0; i < 1000; ++i)
+    {
+        estimator.update(300.0f);
+    }
+    
+    // Ground level should be stable around 300m
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 300.0f, estimator.getEGL());
+    
+    // Now feed a different altitude before launch
+    for (int i = 0; i < 100; ++i)
+    {
+        estimator.update(350.0f);
+    }
+    
+    // Ground level should have shifted towards the new value due to EMA
+    TEST_ASSERT_FLOAT_WITHIN(1.0f, 350.0f, estimator.getEGL());
+}
+
 // -----------------------------------------------------------------------------
 // Test 13 – Zero altitude ground level
 // -----------------------------------------------------------------------------
@@ -453,6 +476,7 @@ int main(void)
     RUN_TEST(test_early_launch_detection);
     RUN_TEST(test_launch_detection_method);
     RUN_TEST(test_exponential_moving_average_accuracy);
+    RUN_TEST(test_ground_level_estimation_can_change_after_many_samples);
     RUN_TEST(test_zero_altitude_ground);
     RUN_TEST(test_high_sample_count_stability);
     return UNITY_END();
