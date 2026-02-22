@@ -82,23 +82,29 @@ void test_a_full_second_of_ticks(void) {
     zAclData.addData(DataPoint(1, 1.234567f)); //00111111 10011110 00000110 01001011
     altitudeData.addData(DataPoint(1, 10000.0f)); //01000110 00011100 01000000 00000000
     numberSentPackets.addData(DataPoint(1, 1));
-    uint8_t expectedSentBytes[51] = {   0, 0, 0, 51, // Start (4)
-                                        0, 0, 1, 244,  // Timestamp (4)
-                                        102,         // Acceleration Label (1)
-                                        64, 216, 144, 205, // X Acceleration (4)
-                                        64, 223, 7, 192,   // Y Acceleration (4)
-                                        63, 158, 6, 75,    // Z Acceleration (4)
-                                        0, 0, 0, 52, // End (4)
-                                        0, 0, 0, 51, // Start (4)
-                                        0, 0, 3, 232,  // Timestamp (4)
-                                        102,         // Acceleration Label (1)
-                                        64, 216, 144, 205, // X Acceleration (4)
-                                        64, 223, 7, 192,   // Y Acceleration (4)
-                                        63, 158, 6, 75,    // Z Acceleration (4)
-                                        8,            // Altitude Label (1)
-                                        70, 28, 64, 0,    // Altitude (4)
-    };
-    // Total bytes: 51
+    uint8_t expectedSentBytes[63] = {   
+        // FIRST PACKET
+        0, 0, 0, 51,           // Start (4) - bytes 0-3
+        0, 0, 1, 244,          // Timestamp 500 (4) - bytes 4-7
+        0, 0, 0, 0,            // Counter 0 (4) - bytes 8-11
+        102,                   // Label (1) - byte 12
+        64, 216, 144, 205,     // X (4) - bytes 13-16
+        64, 223, 7, 192,       // Y (4) - bytes 17-20
+        63, 158, 6, 75,        // Z (4) - bytes 21-24
+        0, 0, 0, 52,           // End (4) - bytes 25-28
+        
+        // SECOND PACKET
+        0, 0, 0, 51,           // Start (4) - bytes 29-32
+        0, 0, 3, 232,          // Timestamp 1000 (4) - bytes 33-36
+        0, 0, 0, 1,            // Counter 1 (4) - bytes 37-40
+        102,                   // Label (1) - byte 41
+        64, 216, 144, 205,     // X (4) - bytes 42-45
+        64, 223, 7, 192,       // Y (4) - bytes 46-49
+        63, 158, 6, 75,        // Z (4) - bytes 50-53
+        8,                     // Altitude label (1) - byte 54
+        70, 28, 64, 0,         // Altitude (4) - bytes 55-58
+        0, 0, 0, 52,           // End (4) - bytes 59-62
+};
 
     std::array<SensorDataHandler*, 3> accelerationTriplet{};
     accelerationTriplet[0] = &xAclData;
@@ -150,10 +156,10 @@ void test_a_full_second_of_ticks(void) {
     // Test all bytes sent correctly for second second
     for (int i = 0; i < 51; i++) {
         // Skip timestamp bytes
-        if (i >= 4 && i <= 7) {
+        if (i >= 4 && i <= 11) {
             continue;
         }
-        if (i >= 29 && i <= 32) {
+        if (i >= 33 && i <= 40) {
             continue;
         }
 
@@ -165,9 +171,66 @@ void test_a_full_second_of_ticks(void) {
     }
 }
 
+void test_first_packet_counter_is_zero(void) {
+    MockDataSaver mockXAcl, mockYAcl, mockZAcl;
+    SensorDataHandler xAclData(1, &mockXAcl);
+    SensorDataHandler yAclData(2, &mockYAcl);
+    SensorDataHandler zAclData(3, &mockZAcl);
+
+    xAclData.addData(DataPoint(1, 6.767676f));
+    yAclData.addData(DataPoint(1, 6.969696f));
+    zAclData.addData(DataPoint(1, 1.234567f));
+
+    std::array<SensorDataHandler*, 3> accelerationTriplet{&xAclData, &yAclData, &zAclData};
+    std::array<SendableSensorData*, 1> ssds{
+        new SendableSensorData(accelerationTriplet, 102, 2),
+    };
+
+    Stream mockRfdSerial;
+    Telemetry telemetry(ssds, mockRfdSerial);
+    telemetry.tick((uint32_t)500);
+
+    // kPacketCounterIndex = 8, counter should be 0x00000000
+    TEST_ASSERT_EQUAL(0, mockRfdSerial.writeCalls.at(TelemetryFmt::kPacketCounterIndex));
+    TEST_ASSERT_EQUAL(0, mockRfdSerial.writeCalls.at(TelemetryFmt::kPacketCounterIndex + 1));
+    TEST_ASSERT_EQUAL(0, mockRfdSerial.writeCalls.at(TelemetryFmt::kPacketCounterIndex + 2));
+    TEST_ASSERT_EQUAL(0, mockRfdSerial.writeCalls.at(TelemetryFmt::kPacketCounterIndex + 3));
+}
+
+void test_second_packet_counter_is_one(void) {
+    MockDataSaver mockXAcl, mockYAcl, mockZAcl;
+    SensorDataHandler xAclData(1, &mockXAcl);
+    SensorDataHandler yAclData(2, &mockYAcl);
+    SensorDataHandler zAclData(3, &mockZAcl);
+
+    xAclData.addData(DataPoint(1, 6.767676f));
+    yAclData.addData(DataPoint(1, 6.969696f));
+    zAclData.addData(DataPoint(1, 1.234567f));
+
+    std::array<SensorDataHandler*, 3> accelerationTriplet{&xAclData, &yAclData, &zAclData};
+    std::array<SendableSensorData*, 1> ssds{
+        new SendableSensorData(accelerationTriplet, 102, 2),
+    };
+
+    Stream mockRfdSerial;
+    Telemetry telemetry(ssds, mockRfdSerial);
+    telemetry.tick((uint32_t)500);
+    telemetry.tick((uint32_t)1000);
+
+    // First packet: kHeaderBytes(12) + label(1) + 3 floats(12) + end marker(4) = 29 bytes
+    // Second packet counter starts at byte 29 + kPacketCounterIndex
+    const int secondPacketStart = 29;
+    TEST_ASSERT_EQUAL(0, mockRfdSerial.writeCalls.at(secondPacketStart + TelemetryFmt::kPacketCounterIndex));
+    TEST_ASSERT_EQUAL(0, mockRfdSerial.writeCalls.at(secondPacketStart + TelemetryFmt::kPacketCounterIndex + 1));
+    TEST_ASSERT_EQUAL(0, mockRfdSerial.writeCalls.at(secondPacketStart + TelemetryFmt::kPacketCounterIndex + 2));
+    TEST_ASSERT_EQUAL(1, mockRfdSerial.writeCalls.at(secondPacketStart + TelemetryFmt::kPacketCounterIndex + 3));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_initialization);
     RUN_TEST(test_a_full_second_of_ticks);
+    RUN_TEST(test_first_packet_counter_is_zero);
+    RUN_TEST(test_second_packet_counter_is_one);
     return UNITY_END();
 }
