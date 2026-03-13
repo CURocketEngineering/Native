@@ -38,6 +38,8 @@ void test_burnout_state_machine_with_real_data(void)
     ApogeePredictor          apogeePredictor(vve);
     ApogeePredictor          quadApogeePredictor(vve);
     ApogeePredictor          polyApogeePredictor(vve);
+    ApogeePredictor          simulateapogeePredictor(vve);
+    ApogeePredictor          analyticapogeePredictor(vve);
     DataSaverMock            dataSaver;
     BurnoutStateMachine      sm(&dataSaver, &lp, &ad, &vve);
 
@@ -48,7 +50,7 @@ void test_burnout_state_machine_with_real_data(void)
                              "Could not open logs/burnout_state_machine_log.csv");
 
     log << "time,accelx,accely,accelz,altitude,state,estAlt_m,estVel_mps,"
-           "predApogee_m,quadPredApogee_m,polyPredApogee_m,timeToApogee_s\n";
+           "predApogee_m,quadPredApogee_m,polyPredApogee_m,simulatePredApogee_m,analyticPredApogee_m,timeToApogee_s\n";
     log << std::fixed << std::setprecision(3);
 
     // ── variables for assertions ────────────────────────────────────────
@@ -81,10 +83,14 @@ void test_burnout_state_machine_with_real_data(void)
             apogeePredictor.update();    
             quadApogeePredictor.quad_update();  
             polyApogeePredictor.poly_update();
+            simulateapogeePredictor.simulate_update();
+            analyticapogeePredictor.analytic_update();
         }
         float predApogee       = apogeePredictor.getPredictedApogeeAltitude_m();
         float quadPredApogee  = quadApogeePredictor.getPredictedApogeeAltitude_m();
         float polyPredApogee  = polyApogeePredictor.getPredictedApogeeAltitude_m();
+        float simulatePredApogee  = simulateapogeePredictor.getPredictedApogeeAltitude_m();
+        float analyticPredApogee  = analyticapogeePredictor.getPredictedApogeeAltitude_m();
         float timeToApogee     = apogeePredictor.getTimeToApogee_s();
         float estAlt           = vve.getEstimatedAltitude();
         float estVel           = vve.getEstimatedVelocity();
@@ -96,7 +102,7 @@ void test_burnout_state_machine_with_real_data(void)
         // ── log one CSV row ────────────────────────────────────────────
         log << d.time << ',' << d.accelx << ',' << d.accely << ','
             << d.accelz << ',' << d.altitude << ',' << static_cast<int>(sm.getState()) << ','
-            << estAlt << ',' << estVel << ',' << predApogee << ',' << quadPredApogee << ',' << polyPredApogee << ','
+            << estAlt << ',' << estVel << ',' << predApogee << ',' << quadPredApogee << ',' << polyPredApogee << ','<< simulatePredApogee << ',' << analyticPredApogee << ','
             << timeToApogee << '\n';
 
         // ── book‑keeping for post‑test assertions ─────────────────────

@@ -35,6 +35,8 @@ def main(csv_path: str) -> None:
     ax_alt.plot(t, df["predApogee_m"],     label="Predicted Apogee")
     ax_alt.plot(t, df['quadPredApogee_m'], label="Predicted Apogee (Quad)")
     ax_alt.plot(t, df['polyPredApogee_m'], label="Predicted Apogee (Poly)")
+    ax_alt.plot(t, df['simulatePredApogee_m'], label="Predicted Apogee (Simulate)")
+    ax_alt.plot(t, df['analyticPredApogee_m'], label="Predicted Apogee (Analytic)")
     ax_alt.set_xlabel("Time (s)")
     ax_alt.set_ylabel("Altitude / Prediction (m)")
 
