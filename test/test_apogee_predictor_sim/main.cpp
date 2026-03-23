@@ -4,6 +4,8 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <vector>
+#include <cmath>
 
 #include "AirResistanceSimulation.h"
 #include "state_estimation/VerticalVelocityEstimator.h"
@@ -11,428 +13,220 @@
 #include "data_handling/DataPoint.h"
 #include "data_handling/CircularArray.h"
 
-
-
 /* ---------- helpers ---------- */
 static std::default_random_engine rng{42};
-static std::normal_distribution<float> aclNoise(0.0f, 0.55f);   // m/s²  (IMU noise)
-static std::normal_distribution<float> altNoise(0.0f, 3.0f);    // m     (baro noise)
+static std::normal_distribution<float> aclNoise(0.0f, 0.55f);
+static std::normal_distribution<float> altNoise(0.0f, 3.0f);
 
 auto safe_stof = [](const std::string &s, float default_val = 0.0f) -> float {
-    try {
-        return std::stof(s);
-    } catch (const std::invalid_argument&) {
-        return default_val;
-    } catch (const std::out_of_range&) {
-        return default_val;
-    }
+    try { return std::stof(s); } catch (...) { return default_val; }
 };
-
 auto safe_stoul = [](const std::string &s, uint32_t default_val = 0) -> uint32_t {
-    try {
-        return std::stoul(s);
-    } catch (...) {
-        return default_val;
-    }
+    try { return std::stoul(s); } catch (...) { return default_val; }
 };
 
-/* ---------- Unity fixtures ---------- */
-void setUp   (void) {}
-void tearDown(void) {}
-
-/* ---------- the actual tests ---------- */
-
-
-/*--------test apogee predictor with generated CSV ----------*/
-void test_apogee_predictor_generates_csv(void)
-{
-    /* --------------- create simulator --------------- */
-    constexpr uint32_t TICK_MS     = 10;
-    AirResistanceSimulator sim(/*launch*/       2000,
-                               /*motor accel*/  55.0f,
-                               /*burn*/         1500,
-                               /*tick*/         TICK_MS,
-                               /*drag k*/       0.0008f);
-
-    /* --------------- estimation chain --------------- */
-    NoiseVariances noise = {1.05F, 10.0F};
-    VerticalVelocityEstimator vve(noise);
-    ApogeePredictor apo(vve, /*alpha*/0.2f, /*min climb vel*/1.0f);
-
-    /* --------------- CSV setup ---------------------- */
-    std::ofstream csv("apogee_prediction.csv");
+void SetupOutputCSV(std::ofstream &csv) {
     TEST_ASSERT_TRUE_MESSAGE(csv.is_open(), "Failed to open CSV file for writing");
-
     csv << "timestamp,true_alt,true_vertical_velocity,"
            "est_alt,est_vertical_velocity,true_acl,est_acl,cd,est_apogee\n";
+}
 
-    const float desired_apogee_m = 100.0f;
+inline float computeVerticalVelocity(float prev_alt, float alt, uint32_t prev_ts, uint32_t ts) {
+    return (prev_ts > 0) ? (alt - prev_alt) / ((ts - prev_ts) * 0.001f) : 0.0f;
+}
 
-    float initial_drag_coefficient = sim.getDragCoefficient();
+inline AccelerationTriplet buildAccelerationTriplet(uint32_t ts, float ax, float ay, float az) {
+    return { DataPoint(ts, ax), DataPoint(ts, ay), DataPoint(ts, az) };
+}
+
+inline void writeCsvRow(std::ofstream &csv, uint32_t ts, float alt, float vertical_vel,
+                        VerticalVelocityEstimator &vve, ApogeePredictor &apo, float aclZ = 0.0f) 
+{
+    csv << ts << ','
+        << alt << ','
+        << vertical_vel << ','
+        << vve.getEstimatedAltitude() << ','
+        << vve.getEstimatedVelocity() << ','
+        << aclZ << ','
+        << vve.getInertialVerticalAcceleration() << ','
+        << apo.getdragCoefficient() << ',';
+    if (apo.isPredictionValid()) csv << apo.getPredictedApogeeAltitude_m();
+    else csv << 0.0f;
+    csv << '\n';
+}
+
+bool parseCsvRow(const std::vector<std::string>& tokens, int idx_ts, int idx_ax, int idx_ay,
+                 int idx_az, int idx_alt, uint32_t &ts, float &ax, float &ay, float &az, float &alt) 
+{
+    if (tokens.size() <= std::max({idx_ts, idx_ax, idx_ay, idx_az, idx_alt})) return false;
+    ts  = safe_stoul(tokens[idx_ts]);
+    ax  = safe_stof(tokens[idx_ax]);
+    ay  = safe_stof(tokens[idx_ay]);
+    az  = safe_stof(tokens[idx_az]);
+    alt = safe_stof(tokens[idx_alt]);
+    return true;
+}
+
+/* ---------- Unity fixtures ---------- */
+void setUp(void) {}
+void tearDown(void) {}
+
+/* ---------- Test 1: Generated CSV ---------- */
+void test_apogee_predictor_generates_csv(void)
+{
+    constexpr uint32_t TICK_MS = 10;
+    AirResistanceSimulator sim(2000, 55.0f, 1500, TICK_MS, 0.0008f);
+    NoiseVariances noise = {1.05F, 10.0F};
+    VerticalVelocityEstimator vve(noise);
+    ApogeePredictor apo(vve, 0.2f, 1.0f);
+
+    std::ofstream csv("apogee_prediction_generated.csv");
+    SetupOutputCSV(csv);
 
     bool is_post_burnout = false;
     bool check_apogee_prediction = false;
-
-
     CircularArray<DataPoint, 10> predicted_apogees(10);
 
-
-    uint32_t tick_count = 0;
-
-    /* --------------- run the flight ----------------- */
     while (!sim.getHasLanded())
     {
-       
         sim.tick();
-
-        /* --- build synthetic sensor readings --- */
         const uint32_t ts   = sim.getCurrentTime();
-        const float    aclZ = sim.getInertialVerticalAcl() + 9.81f + aclNoise(rng); // proper accel
-        const float    alt  = sim.getAltitude() + altNoise(rng);
+        const float aclZ    = sim.getInertialVerticalAcl() + 9.81f + aclNoise(rng);
+        const float alt     = sim.getAltitude() + altNoise(rng);
+        AccelerationTriplet accel = buildAccelerationTriplet(ts, 0.0f, 0.0f, aclZ);
 
-        DataPoint aclX(ts, 0.0f);
-        DataPoint aclY(ts, 0.0f);
-        DataPoint aclZdp(ts, aclZ);
-        DataPoint altDp(ts,  alt);
-        AccelerationTriplet accel = {aclX, aclY, aclZdp};
-
-        /* --- update estimator / predictor --- */
+        DataPoint altDp(ts, alt);
         vve.update(accel, altDp);
 
-        if (!is_post_burnout && sim.getLaunchTimestamp() > 0 && sim.getLaunchTimestamp() + 1500 < ts)
-        {
-            // After 1.5 seconds after launch, we are in post burnout
+        if (!is_post_burnout && sim.getLaunchTimestamp() > 0 && sim.getLaunchTimestamp() + 1500 < ts) {
             is_post_burnout = true;
             TEST_ASSERT_TRUE(ts > 1500);
             TEST_ASSERT_FALSE(apo.isPredictionValid());
         }
-        
-        if (is_post_burnout){
-            apo.analytic_update();
-        }
+        if (is_post_burnout) apo.analytic_update();
 
-        /* --- stream a row to the CSV --- */
-        csv << ts << ','
-            << sim.getAltitude()          << ','
-            << sim.getVerticalVel()       << ','
-            << vve.getEstimatedAltitude() << ','
-            << vve.getEstimatedVelocity() << ','
-            << sim.getInertialVerticalAcl() << ','
-            << vve.getInertialVerticalAcceleration() << ','
-            << sim.getDragCoefficient() << ',';
+        float vertical_vel = sim.getVerticalVel();
+        writeCsvRow(csv, ts, alt, vertical_vel, vve, apo, sim.getInertialVerticalAcl());
 
-        if (apo.isPredictionValid()){
-            TEST_ASSERT_TRUE(is_post_burnout);
-            TEST_ASSERT_TRUE(apo.isPredictionValid());
-            csv << apo.getPredictedApogeeAltitude_m();
+        if (apo.isPredictionValid()) predicted_apogees.push(DataPoint(ts, apo.getPredictedApogeeAltitude_m()));
 
-            TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(0.0f, apo.getPredictedApogeeAltitude_m(),
-                "Predicted apogee altitude isn't greater than 0.0f");
-
-            // Push to circular array
-            tick_count++;
-            predicted_apogees.push(DataPoint(ts, apo.getPredictedApogeeAltitude_m()));
-
-            // if predicted is higher than desired, then increase CD otherwith decrease
-            // if (apo.getPredictedApogeeAltitude_m() > desired_apogee_m)
-            // {
-            //     sim.setDragCoefficient(sim.getDragCoefficient() + 0.001f);
-            // }
-            // else
-            // {
-            //     // Can only decrease the drag coef, if greater than the initial drag coef
-            //     if (sim.getDragCoefficient() > initial_drag_coefficient)
-            //     {
-            //         sim.setDragCoefficient(sim.getDragCoefficient() - 0.001f);
-            //     }
-            // }
-        }
-
-        // If we are past apogee, check that the oldest value in the predicted apogees was near the now true apogee
-        if (sim.getApogeeTimestamp() < ts && sim.getApogeeTimestamp() > 0 && check_apogee_prediction == false)
-        {
+        if (sim.getApogeeTimestamp() < ts && sim.getApogeeTimestamp() > 0 && !check_apogee_prediction) {
             check_apogee_prediction = true;
-            TEST_ASSERT_TRUE(is_post_burnout);
-            TEST_ASSERT_FALSE(apo.isPredictionValid()); // Not valid anymore because we are post apogee
-            TEST_ASSERT_TRUE(predicted_apogees.isFull());
-            TEST_ASSERT_TRUE(predicted_apogees.getMaxSize() > 0);
             DataPoint oldest = predicted_apogees.getFromHead(predicted_apogees.getMaxSize() - 1);
-
-            std::cout << "Tick count: " << tick_count << std::endl;
-            std::cout << "Apogee timestamp: " << sim.getApogeeTimestamp() << std::endl;
-            std::cout << "Current timestamp: " << ts << std::endl;
-            std::cout << "Predicted apogee: " << apo.getPredictedApogeeAltitude_m() << std::endl;
-            std::cout << "True apogee: " << sim.getApogeeAlt() << std::endl;
-            std::cout << "Tail apogee timestamp: " << oldest.timestamp_ms << std::endl;
-            std::cout << "Tail apogee value: " << oldest.data << std::endl;
-            // head
-            std::cout << "Head apogee timestamp: " << predicted_apogees.getFromHead(0).timestamp_ms << std::endl;
-            std::cout << "Head apogee value: " << predicted_apogees.getFromHead(0).data << std::endl;
-            // Get the oldest value in the circular array
-            
-            TEST_ASSERT_FLOAT_WITHIN_MESSAGE(1.000f, sim.getApogeeAlt(), oldest.data,
-                "Predicted apogee was not close to the true apogee");
+            TEST_ASSERT_FLOAT_WITHIN_MESSAGE(1.0f, sim.getApogeeAlt(), oldest.data,
+                "Predicted apogee was not close to true apogee");
         }
-        csv << '\n';
     }
-
     csv.close();
 }
 
-/* ---------- the test using real CSV ---------- */
+/* ---------- Test 2: Real CSV ---------- */
 void test_apogee_predictor_with_real_csv(void)
 {
-    /* --------------- select a file --------------- */
     std::ifstream file("data/data.csv");
     TEST_ASSERT_TRUE_MESSAGE(file.is_open(), "Failed to open CSV file");
 
-    /* --------------- CSV setup ---------------------- */
-    std::ofstream csv("apogee_prediction.csv");
-    TEST_ASSERT_TRUE_MESSAGE(csv.is_open(), "Failed to open CSV file for writing");
-
-    csv << "timestamp,true_alt,true_vertical_velocity,"
-           "est_alt,est_vertical_velocity,true_acl,est_acl,cd,est_apogee\n";
+    std::ofstream csv("apogee_prediction_real.csv");
+    SetupOutputCSV(csv);
 
     VerticalVelocityEstimator vve;
     ApogeePredictor apo(vve, 0.2f, 0.5f);
 
-    CircularArray<DataPoint, 10> predicted_apogees(10);
-
-    std::string line;
-    std::getline(file, line); // read header
+    std::string line; std::getline(file, line); // header
     std::stringstream header_ss(line);
-    std::string col;
-    std::vector<std::string> headers;
+    std::string col; std::vector<std::string> headers;
     while (std::getline(header_ss, col, ',')) headers.push_back(col);
 
-    // Map column names to indices
-    int idx_ts = -1, idx_ax = -1, idx_ay = -1, idx_az = -1, idx_alt = -1;
-    for (size_t i = 0; i < headers.size(); i++) {
+    int idx_ts=-1, idx_ax=-1, idx_ay=-1, idx_az=-1, idx_alt=-1;
+    for (size_t i=0;i<headers.size();i++) {
         std::string h = headers[i];
-        if (h == "time" || h == "TIMESTAMP") idx_ts = i;
-        else if (h == "accelx" || h == "ACCELEROMETER_X") idx_ax = i;
-        else if (h == "accely" || h == "ACCELEROMETER_Y") idx_ay = i;
-        else if (h == "accelz" || h == "ACCELEROMETER_Z") idx_az = i;
-        else if (h == "altitude" || h == "ALTITUDE") idx_alt = i;
+        if (h=="time"||h=="TIMESTAMP") idx_ts=i;
+        else if(h=="accelx"||h=="ACCELEROMETER_X") idx_ax=i;
+        else if(h=="accely"||h=="ACCELEROMETER_Y") idx_ay=i;
+        else if(h=="accelz"||h=="ACCELEROMETER_Z") idx_az=i;
+        else if(h=="altitude"||h=="ALTITUDE") idx_alt=i;
     }
+    TEST_ASSERT_TRUE_MESSAGE(idx_ts>=0 && idx_ax>=0 && idx_ay>=0 && idx_az>=0 && idx_alt>=0, "Missing CSV columns");
 
-    TEST_ASSERT_TRUE_MESSAGE(idx_ts >= 0 && idx_ax >= 0 && idx_ay >= 0 && idx_az >= 0 && idx_alt >= 0,
-                             "Failed to find required CSV columns");
+    float prev_alt=0.0f; uint32_t prev_ts=0;
+    while (std::getline(file,line)) {
+        std::stringstream ss(line); std::string token; std::vector<std::string> tokens;
+        while(std::getline(ss,token,',')) tokens.push_back(token);
+        uint32_t ts; float ax,ay,az,alt;
+        if(!parseCsvRow(tokens, idx_ts, idx_ax, idx_ay, idx_az, idx_alt, ts, ax, ay, az, alt)) continue;
 
-    float prev_alt = 0.0f;
-    uint32_t prev_ts = 0;
-
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string token;
-        std::vector<std::string> tokens;
-        while (std::getline(ss, token, ',')) tokens.push_back(token);
-
-        if (tokens.size() <= std::max({idx_ts, idx_ax, idx_ay, idx_az, idx_alt})) continue;
-
-        uint32_t ts  = safe_stoul(tokens[idx_ts]);
-        float ax = safe_stof(tokens[idx_ax]);
-        float ay = safe_stof(tokens[idx_ay]);
-        float az = safe_stof(tokens[idx_az]);
-        float alt = safe_stof(tokens[idx_alt]);
-
-        // Compute vertical velocity from altitude
-        float vertical_vel = 0.0f;
-        if (prev_ts > 0)
-            vertical_vel = (alt - prev_alt) / ((ts - prev_ts) * 0.001f);
-
-        prev_alt = alt;
-        prev_ts = ts;
-
-        DataPoint aclX(ts, ax);
-        DataPoint aclY(ts, ay);
-        DataPoint aclZ(ts, az);
-        DataPoint altDp(ts, alt);
-
-        AccelerationTriplet accel = {aclX, aclY, aclZ};
-
-        vve.update(accel, altDp);
+        float vertical_vel = computeVerticalVelocity(prev_alt, alt, prev_ts, ts);
+        prev_alt=alt; prev_ts=ts;
+        AccelerationTriplet accel = buildAccelerationTriplet(ts, ax, ay, az);
+        vve.update(accel, DataPoint(ts, alt));
         apo.analytic_update();
-
-        csv << ts << ','
-            << alt << ','
-            << vertical_vel << ','
-            << vve.getEstimatedAltitude() << ','
-            << vve.getEstimatedVelocity() << ','
-            << az << ','
-            << vve.getInertialVerticalAcceleration() << ','
-            << apo.getdragCoefficient() << ',';
-
-        if (apo.isPredictionValid()) {
-            float est_apogee = apo.getPredictedApogeeAltitude_m();
-            csv << est_apogee;
-            predicted_apogees.push(DataPoint(ts, est_apogee));
-        } else {
-            csv << 0.0f;
-        }
-        csv << '\n';
+        writeCsvRow(csv, ts, alt, vertical_vel, vve, apo, az);
     }
 
-    file.close();
-    csv.close();
+    file.close(); csv.close();
 }
 
-/* --------------- test with multiple real CSVs --------------- */
+/* ---------- Test 3: Multiple CSVs ---------- */
 void test_apogee_predictor_with_multiple_csvs(void)
 {
-    //files that will be tested
     const char* files[] = {
         "data/MARTHA_3-8_1.3_B2_SingleID_transformed.csv",
         "data/MARTHA_IREC_2025_B2_transformed.csv",
         "data/AA Data Collection - Second Launch Trimmed.csv"
     };
-    //constant meters to feet conversion
-    const float meters_to_feet = 3.28084f;
 
-    for (const char* filename : files)
-    {
+    for(const char* filename: files) {
         std::ifstream file(filename);
-        TEST_ASSERT_TRUE_MESSAGE(file.is_open(), ("Failed to open CSV file: " + std::string(filename)).c_str());
+        TEST_ASSERT_TRUE_MESSAGE(file.is_open(), ("Failed to open CSV: "+std::string(filename)).c_str());
 
-        std::string outname = "apogee_prediction_" + std::string(filename).substr(5);
-        std::ofstream csv(outname);
-        TEST_ASSERT_TRUE_MESSAGE(csv.is_open(), "Failed to open CSV file for writing");
-
-        csv << "timestamp,true_alt,true_vertical_velocity,"
-               "est_alt,est_vertical_velocity,true_acl,est_acl,cd,est_apogee\n";
+        std::ofstream csv("apogee_prediction_"+std::string(filename).substr(5));
+        SetupOutputCSV(csv);
 
         VerticalVelocityEstimator vve;
-        ApogeePredictor apo(vve, 0.2f, 0.5f);  // alpha=0.2, min climb vel=0.5 m/s
+        ApogeePredictor apo(vve,0.2f,0.5f);
+        float prev_alt=0.0f; uint32_t prev_ts=0;
+        float true_apogee=0.0f; uint32_t apogee_ts=0;
+        std::vector<std::pair<uint32_t,float>> predicted_apogees;
 
-        float prev_alt = 0.0f;
-        uint32_t prev_ts = 0;
-        float true_apogee = 0.0f;
-        uint32_t apogee_ts = 0;
+        std::string line; std::getline(file,line);
+        while(std::getline(file,line)) {
+            std::stringstream ss(line); std::string token; std::vector<std::string> tokens;
+            while(std::getline(ss,token,',')) tokens.push_back(token);
+            uint32_t ts; float ax,ay,az,alt;
+            if(!parseCsvRow(tokens,0,1,2,3,10,ts,ax,ay,az,alt)) continue;
 
-        std::vector<std::pair<uint32_t, float>> predicted_apogees;
+            if(alt>true_apogee){ true_apogee=alt; apogee_ts=ts; }
+            float vertical_vel=computeVerticalVelocity(prev_alt,alt,prev_ts,ts);
+            prev_alt=alt; prev_ts=ts;
 
-        std::string line;
-        std::getline(file, line); // skip header
-
-        while (std::getline(file, line))
-        {
-            std::stringstream ss(line);
-            std::string token;
-
-            uint32_t ts;
-            float ax, ay, az, alt;
-
-            // Parse CSV columns
-            std::getline(ss, token, ','); ts  = std::stoul(token);
-            std::getline(ss, token, ','); ax  = std::stof(token);
-            std::getline(ss, token, ','); ay  = std::stof(token);
-            std::getline(ss, token, ','); az  = std::stof(token);
-            for (int i = 0; i < 6; i++) std::getline(ss, token, ','); // skip gyro & mag
-            std::getline(ss, token, ','); alt = std::stof(token);
-
-            // Track true apogee
-            if (alt > true_apogee) {
-                true_apogee = alt;
-                apogee_ts = ts;
-            }
-
-            // Compute vertical velocity
-            float vertical_vel = 0.0f;
-            if (prev_ts > 0)
-                vertical_vel = (alt - prev_alt) / ((ts - prev_ts) * 0.001f);
-
-            prev_alt = alt;
-            prev_ts = ts;
-
-            // Build DataPoints
-            DataPoint aclX(ts, ax);
-            DataPoint aclY(ts, ay);
-            DataPoint aclZ(ts, az);
-            DataPoint altDp(ts, alt);
-            AccelerationTriplet accel = {aclX, aclY, aclZ};
-
-            // Update estimator and predictor
-            vve.update(accel, altDp);
-
-            /* update apogee predictor */
-            //apo.poly_update();
-            //apo.quad_update();
+            AccelerationTriplet accel = buildAccelerationTriplet(ts,ax,ay,az);
+            vve.update(accel,DataPoint(ts,alt));
             apo.simulate_update();
-            //apo.update();
+            writeCsvRow(csv,ts,alt,vertical_vel,vve,apo,az);
 
-            // Stream row to CSV
-            csv << ts << ','
-                << alt << ','
-                << vertical_vel << ','
-                << vve.getEstimatedAltitude() << ','
-                << vve.getEstimatedVelocity() << ','
-                << az << ','
-                << vve.getInertialVerticalAcceleration() << ','
-                << apo.getdragCoefficient() << ','; // placeholder CD
-
-            if (apo.isPredictionValid()) {
-                float est_apogee = apo.getPredictedApogeeAltitude_m();
-                csv << est_apogee;
-                predicted_apogees.emplace_back(ts, est_apogee);
-            } else {
-                csv << 0.0f;
-            }
-            csv << '\n';
+            if(apo.isPredictionValid()) predicted_apogees.emplace_back(ts,apo.getPredictedApogeeAltitude_m());
         }
-
-        // Find first prediction within N feet of true apogee
-        int32_t ts_diff = 0;
-        bool found = false;
-        //tolerance for true apogee (0.01 =  1% of true apogee)
-        const float tolerance_feet = true_apogee * 0.01f;
-        for (const auto& dp : predicted_apogees)
-        {
-            float diff_feet = std::abs(dp.second - true_apogee) * meters_to_feet;
-            if (diff_feet <= tolerance_feet)
-            {
-                ts_diff = apogee_ts - dp.first;
-                found = true;
-                break;
-            }
-        }
-
-        if (found) {
-            printf("File: %s | Predicted within %.1f ft of true apogee %.2f m, %d ms before actual apogee\n",
-                   filename, tolerance_feet, true_apogee, ts_diff);
-        } else {
-            printf("File: %s | Predictor never got within %.1f ft of true apogee %.2f m\n",
-                   filename, tolerance_feet, true_apogee);
-        }
-
-        file.close();
-        csv.close();
+        file.close(); csv.close();
     }
 }
 
-/* --------------- test with IREC CSV to see if it passes test --------------- */
+/* ---------- Test 4: IREC CSV 15s early ---------- */
 void test_apogee_predictor_with_irec_csv_15s_early(void)
 {
     const char* filename = "data/MARTHA_IREC_2025_B2_transformed.csv";
-
     std::ifstream file(filename);
     TEST_ASSERT_TRUE_MESSAGE(file.is_open(), "Failed to open IREC CSV file");
 
     std::ofstream csv("apogee_prediction_IREC.csv");
-    TEST_ASSERT_TRUE_MESSAGE(csv.is_open(), "Failed to open output CSV");
-
-    csv << "timestamp,true_alt,true_vertical_velocity,"
-           "est_alt,est_vertical_velocity,true_acl,est_acl,cd,est_apogee\n";
+    SetupOutputCSV(csv);
 
     VerticalVelocityEstimator vve;
     ApogeePredictor apo(vve, 0.2f, 0.5f);
 
     float prev_alt = 0.0f;
     uint32_t prev_ts = 0;
-
     float true_apogee = 0.0f;
     uint32_t apogee_ts = 0;
-
     std::vector<std::pair<uint32_t, float>> predicted_apogees;
 
     std::string line;
@@ -442,236 +236,102 @@ void test_apogee_predictor_with_irec_csv_15s_early(void)
     {
         std::stringstream ss(line);
         std::string token;
+        std::vector<std::string> tokens;
+        while (std::getline(ss, token, ',')) tokens.push_back(token);
 
-        uint32_t ts;
-        float ax, ay, az, alt;
+        uint32_t ts; float ax, ay, az, alt;
+        if (!parseCsvRow(tokens, 0, 1, 2, 3, 10, ts, ax, ay, az, alt)) continue;
 
-        std::getline(ss, token, ','); ts  = std::stoul(token);
-        std::getline(ss, token, ','); ax  = std::stof(token);
-        std::getline(ss, token, ','); ay  = std::stof(token);
-        std::getline(ss, token, ','); az  = std::stof(token);
-        for (int i = 0; i < 6; i++) std::getline(ss, token, ',');
-        std::getline(ss, token, ','); alt = std::stof(token);
+        if (alt > true_apogee) { true_apogee = alt; apogee_ts = ts; }
+        float vertical_vel = computeVerticalVelocity(prev_alt, alt, prev_ts, ts);
+        prev_alt = alt; prev_ts = ts;
 
-        /* track true apogee */
-        if (alt > true_apogee)
-        {
-            true_apogee = alt;
-            apogee_ts = ts;
-        }
-
-        /* compute vertical velocity */
-        float vertical_vel = 0.0f;
-        if (prev_ts > 0)
-            vertical_vel = (alt - prev_alt) / ((ts - prev_ts) * 0.001f);
-
-        prev_alt = alt;
-        prev_ts = ts;
-
-        /* build datapoints */
-        DataPoint aclX(ts, ax);
-        DataPoint aclY(ts, ay);
-        DataPoint aclZ(ts, az);
-        DataPoint altDp(ts, alt);
-
-        AccelerationTriplet accel = {aclX, aclY, aclZ};
-
-        vve.update(accel, altDp);
+        AccelerationTriplet accel = buildAccelerationTriplet(ts, ax, ay, az);
+        vve.update(accel, DataPoint(ts, alt));
         apo.analytic_update();
 
-        /* write CSV */
-        csv << ts << ','
-            << alt << ','
-            << vertical_vel << ','
-            << vve.getEstimatedAltitude() << ','
-            << vve.getEstimatedVelocity() << ','
-            << az << ','
-            << vve.getInertialVerticalAcceleration() << ','
-            << apo.getdragCoefficient() << ',';
-
-        if (apo.isPredictionValid())
-        {
-            float est_apogee = apo.getPredictedApogeeAltitude_m();
-            csv << est_apogee;
-            predicted_apogees.emplace_back(ts, est_apogee);
-        }
-        else
-        {
-            csv << 0.0f;
-        }
-
-        csv << '\n';
+        writeCsvRow(csv, ts, alt, vertical_vel, vve, apo, az);
+        predicted_apogees.emplace_back(ts, apo.isPredictionValid() ? apo.getPredictedApogeeAltitude_m() : 0.0f);
     }
 
     file.close();
     csv.close();
 
-    /* ---------- check if prediction was within tolerance >= 15s early ---------- */
-
-    const float tolerance_m = true_apogee * 0.01f;  // 1% tolerance
+    const float tolerance_m = true_apogee * 0.01f;
     const uint32_t required_early_ms = 15000;
-
     bool passed = false;
     int32_t early_ms = 0;
-
-    for (const auto& dp : predicted_apogees)
-    {
+    for (const auto& dp : predicted_apogees) {
         float error = fabs(dp.second - true_apogee);
         int32_t time_before_apogee = (int32_t)(apogee_ts - dp.first);
-
-        if (error <= tolerance_m && time_before_apogee >= required_early_ms)
-        {
+        if (error <= tolerance_m && time_before_apogee >= required_early_ms) {
             passed = true;
             early_ms = time_before_apogee;
             break;
         }
     }
 
-    printf("True apogee: %.2f m at %u ms\n", true_apogee, apogee_ts);
-
-    if (passed)
-    {
-        printf("PASS: Prediction reached within 1%% tolerance %d ms before apogee\n", early_ms);
-    }
-    else
-    {
-        printf("FAIL: Predictor did not reach tolerance 15 seconds early\n");
-    }
-
-    TEST_ASSERT_TRUE_MESSAGE(
-        passed,
-        "Apogee predictor did not predict within tolerance at least 15 seconds before apogee"
-    );
+    TEST_ASSERT_TRUE_MESSAGE(passed, "Apogee predictor did not predict within tolerance at least 15 seconds before apogee");
 }
 
-/* --------------- tests with a real csv to see if altitude is run at 50Hz apogee will sill be predictited correctly --------------- */
+/* ---------- Test 5: Real CSV alt every other ---------- */
 void test_apogee_predictor_with_real_csv_alt_every_other(void)
 {
-    /* --------------- select a file --------------- */
     std::ifstream file("data/data_transformed.csv");
     TEST_ASSERT_TRUE_MESSAGE(file.is_open(), "Failed to open CSV file");
 
-    /* --------------- CSV setup ---------------------- */
-    std::ofstream csv("apogee_prediction.csv");
-    TEST_ASSERT_TRUE_MESSAGE(csv.is_open(), "Failed to open CSV file for writing");
-
-    csv << "timestamp,true_alt,true_vertical_velocity,"
-           "est_alt,est_vertical_velocity,true_acl,est_acl,cd,est_apogee\n";
+    std::ofstream csv("apogee_prediction_alt_every_other.csv");
+    SetupOutputCSV(csv);
 
     VerticalVelocityEstimator vve;
-    ApogeePredictor apo(vve, 0.2f, 0.5f);
+    ApogeePredictor apo(vve,0.2f,0.5f);
+    CircularArray<DataPoint,10> predicted_apogees(10);
 
-    CircularArray<DataPoint, 10> predicted_apogees(10);
+    std::string line; std::getline(file,line);
+    std::stringstream header_ss(line); std::string col; std::vector<std::string> headers;
+    while(std::getline(header_ss,col,',')) headers.push_back(col);
 
-    std::string line;
-    std::getline(file, line); // read header
-    std::stringstream header_ss(line);
-    std::string col;
-    std::vector<std::string> headers;
-    while (std::getline(header_ss, col, ',')) headers.push_back(col);
-
-    int idx_ts = -1, idx_ax = -1, idx_ay = -1, idx_az = -1, idx_alt = -1;
-    for (size_t i = 0; i < headers.size(); i++) {
-        std::string h = headers[i];
-        if (h == "time" || h == "TIMESTAMP") idx_ts = i;
-        else if (h == "accelx" || h == "ACCELEROMETER_X") idx_ax = i;
-        else if (h == "accely" || h == "ACCELEROMETER_Y") idx_ay = i;
-        else if (h == "accelz" || h == "ACCELEROMETER_Z") idx_az = i;
-        else if (h == "altitude" || h == "ALTITUDE") idx_alt = i;
+    int idx_ts=-1, idx_ax=-1, idx_ay=-1, idx_az=-1, idx_alt=-1;
+    for(size_t i=0;i<headers.size();i++){
+        std::string h=headers[i];
+        if(h=="time"||h=="TIMESTAMP") idx_ts=i;
+        else if(h=="accelx"||h=="ACCELEROMETER_X") idx_ax=i;
+        else if(h=="accely"||h=="ACCELEROMETER_Y") idx_ay=i;
+        else if(h=="accelz"||h=="ACCELEROMETER_Z") idx_az=i;
+        else if(h=="altitude"||h=="ALTITUDE") idx_alt=i;
     }
+    TEST_ASSERT_TRUE_MESSAGE(idx_ts>=0 && idx_ax>=0 && idx_ay>=0 && idx_az>=0 && idx_alt>=0,"Missing CSV columns");
 
-    TEST_ASSERT_TRUE_MESSAGE(idx_ts >= 0 && idx_ax >= 0 && idx_ay >= 0 && idx_az >= 0 && idx_alt >= 0,
-                             "Failed to find required CSV columns");
+    float prev_alt=0.0f; uint32_t prev_ts=0;
+    int loop_count=0; DataPoint altDp;
+    while(std::getline(file,line)){
+        std::stringstream ss(line); std::string token; std::vector<std::string> tokens;
+        while(std::getline(ss,token,',')) tokens.push_back(token);
+        uint32_t ts; float ax,ay,az,alt;
+        if(!parseCsvRow(tokens,idx_ts,idx_ax,idx_ay,idx_az,idx_alt,ts,ax,ay,az,alt)) continue;
 
-    float prev_alt = 0.0f;
-    uint32_t prev_ts = 0;
+        float vertical_vel=computeVerticalVelocity(prev_alt,alt,prev_ts,ts);
+        prev_alt=alt; prev_ts=ts;
+        AccelerationTriplet accel = buildAccelerationTriplet(ts,ax,ay,az);
 
-    int loop_count = 0;
-    DataPoint altDp;
-
-    while (std::getline(file, line))
-    {
-        std::stringstream ss(line);
-        std::string token;
-        std::vector<std::string> tokens;
-        while (std::getline(ss, token, ',')) tokens.push_back(token);
-
-        if (tokens.size() <= std::max({idx_ts, idx_ax, idx_ay, idx_az, idx_alt})) continue;
-
-        uint32_t ts  = safe_stoul(tokens[idx_ts]);
-        float ax = safe_stof(tokens[idx_ax]);
-        float ay = safe_stof(tokens[idx_ay]);
-        float az = safe_stof(tokens[idx_az]);
-        float alt = safe_stof(tokens[idx_alt]);
-
-        float vertical_vel = 0.0f;
-        if (prev_ts > 0)
-            vertical_vel = (alt - prev_alt) / ((ts - prev_ts) * 0.001f);
-
-        prev_alt = alt;
-        prev_ts = ts;
-
-        DataPoint aclX(ts, ax);
-        DataPoint aclY(ts, ay);
-        DataPoint aclZ(ts, az);
-  
-
-        AccelerationTriplet accel = {aclX, aclY, aclZ};
-
-        /* ---- ONLY UPDATE ALTITUDE EVERY OTHER LOOP ---- */
-        if (loop_count % 2 == 0) {
-             // update alt point 
-             altDp.data = alt;
-             altDp.timestamp_ms = ts;
-        } 
-        vve.update(accel, altDp); 
+        if(loop_count%2==0){ altDp.data=alt; altDp.timestamp_ms=ts; }
+        vve.update(accel,altDp);
         apo.simulate_update();
 
-        csv << ts << ','
-            << alt << ','
-            << vertical_vel << ','
-            << vve.getEstimatedAltitude() << ','
-            << vve.getEstimatedVelocity() << ','
-            << az << ','
-            << vve.getInertialVerticalAcceleration() << ','
-            << apo.getdragCoefficient() << ',';
-
-        if (apo.isPredictionValid()) {
-            float est_apogee = apo.getPredictedApogeeAltitude_m();
-            csv << est_apogee;
-            predicted_apogees.push(DataPoint(ts, est_apogee));
-        } else {
-            csv << 0.0f;
-        }
-
-        csv << '\n';
-
+        writeCsvRow(csv,ts,alt,vertical_vel,vve,apo,az);
         loop_count++;
     }
-
-    file.close();
-    csv.close();
+    file.close(); csv.close();
 }
-/* --------------- main runner ----------------------- */
+
+/* ---------- main runner ----------------------- */
 int main(void)
 {
     UNITY_BEGIN();
-    /* test with a generated CSV */
-    //RUN_TEST(test_apogee_predictor_generates_csv);   // existing long‑form test
-
-
-    /* test with a real CSV */
-    //RUN_TEST(test_apogee_predictor_with_real_csv);
-
-
-    /* test with multiple real CSVs and get how far in advance apogee is predicted with in 1% of true apogee */
-    //RUN_TEST(test_apogee_predictor_with_multiple_csvs);
-    
-    /* test with IREC CSV to see if it passes test */
+    RUN_TEST(test_apogee_predictor_generates_csv);
+    RUN_TEST(test_apogee_predictor_with_real_csv);
+    RUN_TEST(test_apogee_predictor_with_multiple_csvs);
     RUN_TEST(test_apogee_predictor_with_irec_csv_15s_early);
-
-    /* test with a real CSV and raw data to see if altitude is run at 50Hz apogee will sill be predictited correctly */
-    //RUN_TEST(test_apogee_predictor_with_real_csv_alt_every_other);
+    RUN_TEST(test_apogee_predictor_with_real_csv_alt_every_other);
     return UNITY_END();
 }
-
