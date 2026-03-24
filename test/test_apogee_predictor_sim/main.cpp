@@ -26,8 +26,8 @@ static void (ApogeePredictor::*predictionMethod)(void) =
 static const char* dataset = 
 //"data/MARTHA_3-8_1.3_B2_SingleID_transformed.csv";
 //"data/MARTHA_IREC_2025_B2_transformed.csv";
-"data/AA Data Collection - Second Launch Trimmed.csv";
-//"data/data_transformed.csv";
+//"data/AA Data Collection - Second Launch Trimmed.csv";
+"data/data_transformed.csv";
 
 
 /* ---------- helpers ---------- */
@@ -365,6 +365,172 @@ void test_apogee_predictor_with_real_csv_alt_every_other(void (ApogeePredictor::
     file.close(); csv.close();
 }
 
+void test_apogee_predictor_all_methods_timeseries(void)
+{
+    std::ifstream file(dataset);
+    TEST_ASSERT_TRUE_MESSAGE(file.is_open(), "Failed to open CSV file");
+
+    std::ofstream csv("apogee_prediction_all_methods.csv");
+    TEST_ASSERT_TRUE(csv.is_open());
+
+    csv << "timestamp,true_alt,true_vertical_velocity,"
+           "est_alt,est_vertical_velocity,true_acl,est_acl,cd,"
+           "analytic_apogee,simulate_apogee,quad_apogee,poly_apogee,default_apogee\n";
+
+    // ✅ Independent estimators
+    VerticalVelocityEstimator vve_analytic;
+    VerticalVelocityEstimator vve_simulate;
+    VerticalVelocityEstimator vve_quad;
+    VerticalVelocityEstimator vve_poly;
+    VerticalVelocityEstimator vve_default;
+
+    // ✅ Independent predictors
+    ApogeePredictor apo_analytic(vve_analytic, 0.2f, 0.5f);
+    ApogeePredictor apo_simulate(vve_simulate, 0.2f, 0.5f);
+    ApogeePredictor apo_quad(vve_quad, 0.2f, 0.5f);
+    ApogeePredictor apo_poly(vve_poly, 0.2f, 0.5f);
+    ApogeePredictor apo_default(vve_default, 0.2f, 0.5f);
+
+    // ✅ True apogee tracking
+    float true_apogee = 0.0f;
+    uint32_t apogee_ts = 0;
+
+    struct Prediction { uint32_t ts; float val; };
+
+    std::vector<Prediction> analytic_preds;
+    std::vector<Prediction> simulate_preds;
+    std::vector<Prediction> quad_preds;
+    std::vector<Prediction> poly_preds;
+    std::vector<Prediction> default_preds;
+
+    std::string line;
+    std::getline(file, line); // skip header
+
+    float prev_alt = 0.0f;
+    uint32_t prev_ts = 0;
+
+    while (std::getline(file, line))
+    {
+        std::stringstream ss(line);
+        std::string token;
+        std::vector<std::string> tokens;
+
+        while (std::getline(ss, token, ',')) tokens.push_back(token);
+
+        uint32_t ts;
+        float ax, ay, az, alt;
+
+        if (!parseCsvRow(tokens, 0, 1, 2, 3, 10, ts, ax, ay, az, alt)) continue;
+
+        // ✅ Track true apogee
+        if (alt > true_apogee) {
+            true_apogee = alt;
+            apogee_ts = ts;
+        }
+
+        float vertical_vel = computeVerticalVelocity(prev_alt, alt, prev_ts, ts);
+        prev_alt = alt;
+        prev_ts = ts;
+
+        AccelerationTriplet accel = buildAccelerationTriplet(ts, ax, ay, az);
+        DataPoint altDp(ts, alt);
+
+        // ✅ Update each estimator independently
+        vve_analytic.update(accel, altDp);
+        vve_simulate.update(accel, altDp);
+        vve_quad.update(accel, altDp);
+        vve_poly.update(accel, altDp);
+        vve_default.update(accel, altDp);
+
+        // ✅ Run each method
+        apo_analytic.analytic_update();
+        apo_simulate.simulate_update();
+        apo_quad.quad_update();
+        apo_poly.poly_update();
+        apo_default.update();
+
+        // ✅ Store predictions (FILTER BAD SPIKES)
+        auto push_if_valid = [&](ApogeePredictor& apo, std::vector<Prediction>& vec) {
+            if (apo.isPredictionValid()) {
+                float pred = apo.getPredictedApogeeAltitude_m();
+
+                // Filter unrealistic early spikes
+                if (pred > alt) {
+                    vec.push_back({ts, pred});
+                }
+            }
+        };
+
+        push_if_valid(apo_analytic, analytic_preds);
+        push_if_valid(apo_simulate, simulate_preds);
+        push_if_valid(apo_quad, quad_preds);
+        push_if_valid(apo_poly, poly_preds);
+        push_if_valid(apo_default, default_preds);
+
+        // CSV output
+        auto getApogee = [](ApogeePredictor& apo) {
+            return apo.isPredictionValid() ? apo.getPredictedApogeeAltitude_m() : NAN;
+        };
+
+        csv << ts << ','
+            << alt << ','
+            << vertical_vel << ','
+            << vve_default.getEstimatedAltitude() << ','
+            << vve_default.getEstimatedVelocity() << ','
+            << az << ','
+            << vve_default.getInertialVerticalAcceleration() << ','
+            << apo_default.getdragCoefficient() << ','
+            << getApogee(apo_analytic) << ','
+            << getApogee(apo_simulate) << ','
+            << getApogee(apo_quad) << ','
+            << getApogee(apo_poly) << ','
+            << getApogee(apo_default)
+            << '\n';
+    }
+
+    file.close();
+    csv.close();
+
+    // ✅ Evaluation
+    const float tolerance = true_apogee * 0.01f;
+    const int N = 5; // consecutive stable points required
+
+    auto evaluate_method = [&](const std::vector<Prediction>& preds, const char* name)
+    {
+        for (size_t i = 0; i + N < preds.size(); i++)
+        {
+            bool stable = true;
+
+            for (int j = 0; j < N; j++)
+            {
+                float error = fabs(preds[i + j].val - true_apogee);
+                if (error > tolerance)
+                {
+                    stable = false;
+                    break;
+                }
+            }
+
+            if (stable)
+            {
+                int32_t early_ms = (int32_t)(apogee_ts - preds[i].ts);
+                printf("%s: STABLE prediction %d ms before apogee\n", name, early_ms);
+                return;
+            }
+        }
+
+        printf("%s: FAILED (no stable prediction)\n", name);
+    };
+
+    printf("\n===== APOGEE PREDICTION COMPARISON =====\n");
+    printf("True apogee: %.2f m at %u ms\n\n", true_apogee, apogee_ts);
+
+    evaluate_method(analytic_preds, "Analytic");
+    evaluate_method(simulate_preds, "Simulate");
+    evaluate_method(quad_preds, "Quadratic");
+    evaluate_method(poly_preds, "Polynomial");
+    evaluate_method(default_preds, "Default");
+}
 
 //------------------- wrapper functions -------------------
 void test_apogee_predictor_generates_csv(void){
@@ -387,6 +553,7 @@ void test_apogee_predictor_with_real_csv_alt_every_other(void){
     test_apogee_predictor_with_real_csv_alt_every_other(predictionMethod);
 }
 
+
 /* ---------- main runner ----------------------- */
 int main(void)
 {
@@ -395,9 +562,10 @@ int main(void)
     //choose a test or tests to run
 
     //RUN_TEST(test_apogee_predictor_generates_csv);
-    RUN_TEST(test_apogee_predictor_with_real_csv);
+    //RUN_TEST(test_apogee_predictor_with_real_csv);
     //RUN_TEST(test_apogee_predictor_with_multiple_csvs);
     //RUN_TEST(test_apogee_predictor_with_irec_csv_15s_early);
     //RUN_TEST(test_apogee_predictor_with_real_csv_alt_every_other);
+    RUN_TEST(test_apogee_predictor_all_methods_timeseries);
     return UNITY_END();
 }
