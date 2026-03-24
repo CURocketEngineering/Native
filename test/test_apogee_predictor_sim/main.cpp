@@ -565,8 +565,8 @@ int main(void)
     //RUN_TEST(test_apogee_predictor_generates_csv);
     //RUN_TEST(test_apogee_predictor_with_real_csv);
     //RUN_TEST(test_apogee_predictor_with_multiple_csvs);
-    RUN_TEST(test_apogee_predictor_with_irec_csv_15s_early);
+    //RUN_TEST(test_apogee_predictor_with_irec_csv_15s_early);
     //RUN_TEST(test_apogee_predictor_with_real_csv_alt_every_other);
-    //RUN_TEST(test_apogee_predictor_all_methods_timeseries);
+    RUN_TEST(test_apogee_predictor_all_methods_timeseries);
     return UNITY_END();
 }
