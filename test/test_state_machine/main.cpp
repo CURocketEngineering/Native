@@ -1,6 +1,7 @@
 #include "unity.h"
 #include "SimpleSimulation.h"   
 #include "state_estimation/StateMachine.h"
+#include "state_estimation/BaseStateMachine.h"
 #include "data_handling/DataPoint.h"
 #include "data_handling/DataSaverSPI.h"
 #include "DataSaver_mock.h"
@@ -20,15 +21,111 @@ MockSerial Serial;
 DataSaverMock dataSaver;
 IDataSaver* dataSaverPtr = &dataSaver;
 
+namespace {
+class TestableBaseStateMachine : public BaseStateMachine {
+  public:
+    explicit TestableBaseStateMachine(FlightState initialState) : BaseStateMachine(initialState) {}
+
+    int update(const AccelerationTriplet&, const DataPoint&) override {
+        return 0;
+    }
+
+    bool forceState(FlightState newState) {
+        return changeState(newState);
+    }
+};
+
+int armedCallbackCount = 0;
+int ascentCallbackCount = 0;
+
+void onArmed() {
+    armedCallbackCount++;
+}
+
+void onAscent() {
+    ascentCallbackCount++;
+}
+
+void onUnarmed() {}
+
+void onDescent() {}
+} // namespace
+
 //
 // setUp() and tearDown()
 //
 void setUp(void) {
     Serial.clear();
+    armedCallbackCount = 0;
+    ascentCallbackCount = 0;
 }
 
 void tearDown(void) {
     Serial.clear();
+}
+
+void test_base_state_machine_state_entry_callbacks() {
+    TestableBaseStateMachine sm(STATE_UNARMED);
+
+    TEST_ASSERT_TRUE(sm.registerOnStateEntry(STATE_ARMED, &onArmed));
+    TEST_ASSERT_TRUE(sm.registerOnStateEntry(STATE_ASCENT, &onAscent));
+
+    // Duplicate registration is rejected.
+    TEST_ASSERT_FALSE(sm.registerOnStateEntry(STATE_ASCENT, &onAscent));
+
+    // Null callbacks are rejected.
+    TEST_ASSERT_FALSE(sm.registerOnStateEntry(STATE_DESCENT, nullptr));
+
+    TEST_ASSERT_TRUE(sm.forceState(STATE_ARMED));
+    TEST_ASSERT_EQUAL_INT(1, armedCallbackCount);
+    TEST_ASSERT_EQUAL_INT(0, ascentCallbackCount);
+
+    TEST_ASSERT_TRUE(sm.forceState(STATE_ASCENT));
+    TEST_ASSERT_EQUAL_INT(1, armedCallbackCount);
+    TEST_ASSERT_EQUAL_INT(1, ascentCallbackCount);
+
+    // No callback on no-op transition.
+    TEST_ASSERT_FALSE(sm.forceState(STATE_ASCENT));
+    TEST_ASSERT_EQUAL_INT(1, ascentCallbackCount);
+}
+
+void test_base_state_machine_callback_capacity_limit() {
+    TestableBaseStateMachine sm(STATE_UNARMED);
+
+    const FlightState states[] = {
+        STATE_UNARMED,
+        STATE_ARMED,
+        STATE_SOFT_ASCENT,
+        STATE_ASCENT,
+        STATE_POWERED_ASCENT,
+        STATE_COAST_ASCENT,
+        STATE_DESCENT,
+        STATE_DROGUE_DEPLOYED,
+        STATE_MAIN_DEPLOYED,
+        STATE_LANDED,
+    };
+
+    const BaseStateMachine::StateEntryCallback callbacks[] = {
+        &onArmed,
+        &onAscent,
+        &onUnarmed,
+        &onDescent,
+    };
+
+    std::size_t registrations = 0;
+    for (FlightState state : states) {
+        for (BaseStateMachine::StateEntryCallback callback : callbacks) {
+            if (registrations < BaseStateMachine::kMaxStateEntryCallbacks) {
+                TEST_ASSERT_TRUE(sm.registerOnStateEntry(state, callback));
+            } else {
+                TEST_ASSERT_FALSE(sm.registerOnStateEntry(state, callback));
+                return;
+            }
+            registrations++;
+        }
+    }
+
+    TEST_FAIL_MESSAGE("Expected callback registration overflow was not reached");
 }
 
 void test_init(){
@@ -260,6 +357,8 @@ void test_fast_launch_with_confirm(){
 //
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_base_state_machine_state_entry_callbacks);
+    RUN_TEST(test_base_state_machine_callback_capacity_limit);
     RUN_TEST(test_init);
     RUN_TEST(test_launch);
     RUN_TEST(test_apogee_detection);
