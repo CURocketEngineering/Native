@@ -13,6 +13,23 @@
 #include "data_handling/DataPoint.h"
 #include "data_handling/CircularArray.h"
 
+/* ---------- choose prediction method ---------- */
+static void (ApogeePredictor::*predictionMethod)(void) = 
+&ApogeePredictor::analytic_update
+//&ApogeePredictor::simulate_update
+//&ApogeePredictor::quad_update
+//&ApogeePredictor::poly_update
+//&ApogeePredictor::update
+;
+
+/* ---------- choose dataset ---------- */
+static const char* dataset = 
+//"data/MARTHA_3-8_1.3_B2_SingleID_transformed.csv";
+//"data/MARTHA_IREC_2025_B2_transformed.csv";
+"data/AA Data Collection - Second Launch Trimmed.csv";
+//"data/data_transformed.csv";
+
+
 /* ---------- helpers ---------- */
 static std::default_random_engine rng{42};
 static std::normal_distribution<float> aclNoise(0.0f, 0.55f);
@@ -39,8 +56,7 @@ inline AccelerationTriplet buildAccelerationTriplet(uint32_t ts, float ax, float
     return { DataPoint(ts, ax), DataPoint(ts, ay), DataPoint(ts, az) };
 }
 
-inline void writeCsvRow(std::ofstream &csv, uint32_t ts, float alt, float vertical_vel,
-                        VerticalVelocityEstimator &vve, ApogeePredictor &apo, float aclZ = 0.0f) 
+inline void writeCsvRow(std::ofstream &csv, uint32_t ts, float alt, float vertical_vel, VerticalVelocityEstimator &vve, ApogeePredictor &apo, float aclZ = 0.0f) 
 {
     csv << ts << ','
         << alt << ','
@@ -55,8 +71,7 @@ inline void writeCsvRow(std::ofstream &csv, uint32_t ts, float alt, float vertic
     csv << '\n';
 }
 
-bool parseCsvRow(const std::vector<std::string>& tokens, int idx_ts, int idx_ax, int idx_ay,
-                 int idx_az, int idx_alt, uint32_t &ts, float &ax, float &ay, float &az, float &alt) 
+bool parseCsvRow(const std::vector<std::string>& tokens, int idx_ts, int idx_ax, int idx_ay, int idx_az, int idx_alt, uint32_t &ts, float &ax, float &ay, float &az, float &alt) 
 {
     if (tokens.size() <= std::max({idx_ts, idx_ax, idx_ay, idx_az, idx_alt})) return false;
     ts  = safe_stoul(tokens[idx_ts]);
@@ -72,7 +87,7 @@ void setUp(void) {}
 void tearDown(void) {}
 
 /* ---------- Test 1: Generated CSV ---------- */
-void test_apogee_predictor_generates_csv(void)
+void test_apogee_predictor_generates_csv(void (ApogeePredictor::*predictionMethod)(void))
 {
     constexpr uint32_t TICK_MS = 10;
     AirResistanceSimulator sim(2000, 55.0f, 1500, TICK_MS, 0.0008f);
@@ -103,7 +118,7 @@ void test_apogee_predictor_generates_csv(void)
             TEST_ASSERT_TRUE(ts > 1500);
             TEST_ASSERT_FALSE(apo.isPredictionValid());
         }
-        if (is_post_burnout) apo.analytic_update();
+        if (is_post_burnout) (apo.*predictionMethod)();
 
         float vertical_vel = sim.getVerticalVel();
         writeCsvRow(csv, ts, alt, vertical_vel, vve, apo, sim.getInertialVerticalAcl());
@@ -121,12 +136,12 @@ void test_apogee_predictor_generates_csv(void)
 }
 
 /* ---------- Test 2: Real CSV ---------- */
-void test_apogee_predictor_with_real_csv(void)
+void test_apogee_predictor_with_real_csv(void (ApogeePredictor::*predictionMethod)(void))
 {
-    std::ifstream file("data/data.csv");
+    std::ifstream file(dataset);
     TEST_ASSERT_TRUE_MESSAGE(file.is_open(), "Failed to open CSV file");
 
-    std::ofstream csv("apogee_prediction_real.csv");
+    std::ofstream csv("apogee_prediction.csv");
     SetupOutputCSV(csv);
 
     VerticalVelocityEstimator vve;
@@ -159,7 +174,7 @@ void test_apogee_predictor_with_real_csv(void)
         prev_alt=alt; prev_ts=ts;
         AccelerationTriplet accel = buildAccelerationTriplet(ts, ax, ay, az);
         vve.update(accel, DataPoint(ts, alt));
-        apo.analytic_update();
+        (apo.*predictionMethod)();
         writeCsvRow(csv, ts, alt, vertical_vel, vve, apo, az);
     }
 
@@ -167,7 +182,7 @@ void test_apogee_predictor_with_real_csv(void)
 }
 
 /* ---------- Test 3: Multiple CSVs ---------- */
-void test_apogee_predictor_with_multiple_csvs(void)
+void test_apogee_predictor_with_multiple_csvs(void (ApogeePredictor::*predictionMethod)(void))
 {
     const char* files[] = {
         "data/MARTHA_3-8_1.3_B2_SingleID_transformed.csv",
@@ -201,17 +216,43 @@ void test_apogee_predictor_with_multiple_csvs(void)
 
             AccelerationTriplet accel = buildAccelerationTriplet(ts,ax,ay,az);
             vve.update(accel,DataPoint(ts,alt));
-            apo.simulate_update();
+            (apo.*predictionMethod)();
             writeCsvRow(csv,ts,alt,vertical_vel,vve,apo,az);
 
             if(apo.isPredictionValid()) predicted_apogees.emplace_back(ts,apo.getPredictedApogeeAltitude_m());
         }
+
+        // Find first prediction within N feet of true apogee
+        int32_t ts_diff = 0;
+        const float meters_to_feet = 3.28084f;
+        bool found = false;
+        //tolerance for true apogee (0.01 =  1% of true apogee)
+        const float tolerance_feet = true_apogee * 0.01f;
+        for (const auto& dp : predicted_apogees)
+        {
+            float diff_feet = std::abs(dp.second - true_apogee) * meters_to_feet;
+            if (diff_feet <= tolerance_feet)
+            {
+                ts_diff = apogee_ts - dp.first;
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            printf("File: %s | Predicted within %.1f ft of true apogee %.2f m, %d ms before actual apogee\n",
+                   filename, tolerance_feet, true_apogee, ts_diff);
+        } else {
+            printf("File: %s | Predictor never got within %.1f ft of true apogee %.2f m\n",
+                   filename, tolerance_feet, true_apogee);
+        }
+
         file.close(); csv.close();
     }
 }
 
 /* ---------- Test 4: IREC CSV 15s early ---------- */
-void test_apogee_predictor_with_irec_csv_15s_early(void)
+void test_apogee_predictor_with_irec_csv_15s_early(void (ApogeePredictor::*predictionMethod)(void))
 {
     const char* filename = "data/MARTHA_IREC_2025_B2_transformed.csv";
     std::ifstream file(filename);
@@ -248,7 +289,7 @@ void test_apogee_predictor_with_irec_csv_15s_early(void)
 
         AccelerationTriplet accel = buildAccelerationTriplet(ts, ax, ay, az);
         vve.update(accel, DataPoint(ts, alt));
-        apo.analytic_update();
+        (apo.*predictionMethod)();
 
         writeCsvRow(csv, ts, alt, vertical_vel, vve, apo, az);
         predicted_apogees.emplace_back(ts, apo.isPredictionValid() ? apo.getPredictedApogeeAltitude_m() : 0.0f);
@@ -274,10 +315,10 @@ void test_apogee_predictor_with_irec_csv_15s_early(void)
     TEST_ASSERT_TRUE_MESSAGE(passed, "Apogee predictor did not predict within tolerance at least 15 seconds before apogee");
 }
 
-/* ---------- Test 5: Real CSV alt every other ---------- */
-void test_apogee_predictor_with_real_csv_alt_every_other(void)
+/* ---------- Test 5: Real CSV alt every other value ---------- */
+void test_apogee_predictor_with_real_csv_alt_every_other(void (ApogeePredictor::*predictionMethod)(void))
 {
-    std::ifstream file("data/data_transformed.csv");
+    std::ifstream file(dataset);
     TEST_ASSERT_TRUE_MESSAGE(file.is_open(), "Failed to open CSV file");
 
     std::ofstream csv("apogee_prediction_alt_every_other.csv");
@@ -316,7 +357,7 @@ void test_apogee_predictor_with_real_csv_alt_every_other(void)
 
         if(loop_count%2==0){ altDp.data=alt; altDp.timestamp_ms=ts; }
         vve.update(accel,altDp);
-        apo.simulate_update();
+        (apo.*predictionMethod)();
 
         writeCsvRow(csv,ts,alt,vertical_vel,vve,apo,az);
         loop_count++;
@@ -324,14 +365,39 @@ void test_apogee_predictor_with_real_csv_alt_every_other(void)
     file.close(); csv.close();
 }
 
+
+//------------------- wrapper functions -------------------
+void test_apogee_predictor_generates_csv(void){
+    test_apogee_predictor_generates_csv(predictionMethod);
+}
+
+void test_apogee_predictor_with_multiple_csvs(void){
+    test_apogee_predictor_with_multiple_csvs(predictionMethod);
+}
+
+void test_apogee_predictor_with_real_csv(void){
+    test_apogee_predictor_with_real_csv(predictionMethod);
+}
+
+void test_apogee_predictor_with_irec_csv_15s_early(void){
+    test_apogee_predictor_with_irec_csv_15s_early(predictionMethod);
+}
+
+void test_apogee_predictor_with_real_csv_alt_every_other(void){
+    test_apogee_predictor_with_real_csv_alt_every_other(predictionMethod);
+}
+
 /* ---------- main runner ----------------------- */
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_apogee_predictor_generates_csv);
+
+    //choose a test or tests to run
+
+    //RUN_TEST(test_apogee_predictor_generates_csv);
     RUN_TEST(test_apogee_predictor_with_real_csv);
-    RUN_TEST(test_apogee_predictor_with_multiple_csvs);
-    RUN_TEST(test_apogee_predictor_with_irec_csv_15s_early);
-    RUN_TEST(test_apogee_predictor_with_real_csv_alt_every_other);
+    //RUN_TEST(test_apogee_predictor_with_multiple_csvs);
+    //RUN_TEST(test_apogee_predictor_with_irec_csv_15s_early);
+    //RUN_TEST(test_apogee_predictor_with_real_csv_alt_every_other);
     return UNITY_END();
 }
