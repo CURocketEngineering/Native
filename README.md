@@ -1,5 +1,18 @@
 # Native
 
+# Deprecation Note
+
+The tests used within Native have been moved to live in Avionics directly.
+Clone that repo directly. Native will no longer be updated and is only here for archival purposes.
+
+[Avionics Repo](https://github.com/CURocketEngineering/Avionics)
+
+We simply put a `platformio.ini` with a Native environment into Avionics directly to make this repo obsolete.
+
+Everything that follows this statement is the original README for this repo and is only here for archival purposes.
+
+----------------
+
 This is a native PlatformIO environment meaning that it runs on a laptop/desktop computer rather than our embedded hardware. 
 To support a native environment, a 'hal' or hardware abstraction layer was added to **Avionics**. When you want to 
 do `#include "Arduino.h"` instead, you will `#include "ArduinoHAL.h"` which will replace the normal Arduino methods with
